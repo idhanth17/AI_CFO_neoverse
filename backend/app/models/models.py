@@ -1,0 +1,199 @@
+"""
+ORM Models — SQLAlchemy async models for the AI CFO database.
+
+Tables:
+  products       — master product catalogue with stock & pricing
+  invoices       — supplier invoice headers
+  invoice_items  — line items from parsed invoices  → products
+  sales          — customer sales sessions
+  sale_items     — items per sale session            → products
+"""
+
+from __future__ import annotations
+
+import enum
+from datetime import datetime
+from typing import List, Optional
+
+from sqlalchemy import (
+    Boolean, Column, DateTime, Enum, Float, ForeignKey,
+    Integer, String, Text, func,
+)
+from sqlalchemy.orm import relationship, Mapped
+
+from app.db.database import Base
+
+
+# ────────────────────────────────────────────────────────────
+# Enums
+# ────────────────────────────────────────────────────────────
+
+class InvoiceStatus(str, enum.Enum):
+    PENDING   = "pending"
+    PROCESSED = "processed"
+    FAILED    = "failed"
+
+
+class SaleStatus(str, enum.Enum):
+    PENDING   = "pending"
+    PROCESSED = "processed"
+    FAILED    = "failed"
+
+
+# ────────────────────────────────────────────────────────────
+# Product — master catalogue
+# ────────────────────────────────────────────────────────────
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    name           = Column(String(200), nullable=False, unique=True, index=True)
+    sku            = Column(String(100), nullable=True, index=True)
+
+    # Pricing
+    cost_price     = Column(Float, default=0.0, nullable=False)
+    selling_price  = Column(Float, default=0.0, nullable=False)
+    gst_rate       = Column(Float, default=0.0)          # % e.g. 5.0 / 12.0 / 18.0
+
+    # Stock management
+    current_stock  = Column(Float, default=0.0, nullable=False)
+    reorder_point  = Column(Float, default=5.0)          # trigger restock alert
+    safety_stock   = Column(Float, default=2.0)          # minimum buffer
+    lead_time_days = Column(Integer, default=3)          # supplier delivery days
+
+    # Meta
+    unit           = Column(String(20), default="pcs")   # kg / pcs / ltr …
+    is_active      = Column(Boolean, default=True)
+    created_at     = Column(DateTime, default=func.now())
+    updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    invoice_items: Mapped[List["InvoiceItem"]] = relationship(
+        "InvoiceItem", back_populates="product", lazy="select"
+    )
+    sale_items: Mapped[List["SaleItem"]] = relationship(
+        "SaleItem", back_populates="product", lazy="select"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Product id={self.id} name={self.name!r} stock={self.current_stock}>"
+
+
+# ────────────────────────────────────────────────────────────
+# Invoice — supplier invoice header
+# ────────────────────────────────────────────────────────────
+
+class Invoice(Base):
+    __tablename__ = "invoices"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    file_path      = Column(String(500), nullable=True)
+    status         = Column(Enum(InvoiceStatus), default=InvoiceStatus.PENDING, nullable=False)
+
+    # Parsed header fields
+    supplier_name  = Column(String(200), nullable=True)
+    invoice_number = Column(String(100), nullable=True)
+    invoice_date   = Column(DateTime, nullable=True)
+
+    # Aggregates
+    total_amount   = Column(Float, default=0.0)
+    total_gst      = Column(Float, default=0.0)
+
+    # Raw content
+    raw_ocr_text   = Column(Text, nullable=True)
+    error_message  = Column(Text, nullable=True)
+
+    # Meta
+    created_at     = Column(DateTime, default=func.now())
+
+    # Relationships
+    items: Mapped[List["InvoiceItem"]] = relationship(
+        "InvoiceItem", back_populates="invoice", cascade="all, delete-orphan", lazy="select"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Invoice id={self.id} supplier={self.supplier_name!r} status={self.status}>"
+
+
+# ────────────────────────────────────────────────────────────
+# InvoiceItem — one line from a supplier invoice
+# ────────────────────────────────────────────────────────────
+
+class InvoiceItem(Base):
+    __tablename__ = "invoice_items"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    invoice_id   = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False)
+    product_id   = Column(Integer, ForeignKey("products.id"), nullable=True)
+
+    # As parsed from OCR
+    raw_name     = Column(String(200), nullable=False)
+    quantity     = Column(Float, nullable=False)
+    unit_price   = Column(Float, nullable=False)
+    gst_rate     = Column(Float, default=0.0)
+    gst_amount   = Column(Float, default=0.0)
+    total_amount = Column(Float, default=0.0)
+
+    # Relationships
+    invoice: Mapped["Invoice"]      = relationship("Invoice", back_populates="items")
+    product: Mapped[Optional["Product"]] = relationship("Product", back_populates="invoice_items")
+
+    def __repr__(self) -> str:
+        return f"<InvoiceItem id={self.id} name={self.raw_name!r} qty={self.quantity}>"
+
+
+# ────────────────────────────────────────────────────────────
+# Sale — one customer sales session
+# ────────────────────────────────────────────────────────────
+
+class Sale(Base):
+    __tablename__ = "sales"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    status         = Column(Enum(SaleStatus), default=SaleStatus.PENDING, nullable=False)
+
+    # Input
+    raw_audio_path = Column(String(500), nullable=True)
+    raw_text       = Column(Text, nullable=True)
+
+    # Aggregate
+    total_amount   = Column(Float, default=0.0)
+    error_message  = Column(Text, nullable=True)
+
+    # Meta
+    sale_date      = Column(DateTime, default=func.now())
+    created_at     = Column(DateTime, default=func.now())
+
+    # Relationships
+    items: Mapped[List["SaleItem"]] = relationship(
+        "SaleItem", back_populates="sale", cascade="all, delete-orphan", lazy="select"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Sale id={self.id} total={self.total_amount} status={self.status}>"
+
+
+# ────────────────────────────────────────────────────────────
+# SaleItem — one product in a sales session
+# ────────────────────────────────────────────────────────────
+
+class SaleItem(Base):
+    __tablename__ = "sale_items"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    sale_id      = Column(Integer, ForeignKey("sales.id", ondelete="CASCADE"), nullable=False)
+    product_id   = Column(Integer, ForeignKey("products.id"), nullable=True)
+
+    # As parsed from voice/text
+    raw_name     = Column(String(200), nullable=False)
+    quantity     = Column(Float, nullable=False)
+    unit_price   = Column(Float, default=0.0)
+    total_amount = Column(Float, default=0.0)
+
+    # Relationships
+    sale: Mapped["Sale"]                 = relationship("Sale", back_populates="items")
+    product: Mapped[Optional["Product"]] = relationship("Product", back_populates="sale_items")
+
+    def __repr__(self) -> str:
+        return f"<SaleItem id={self.id} name={self.raw_name!r} qty={self.quantity}>"

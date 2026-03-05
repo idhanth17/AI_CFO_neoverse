@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────
+# AI CFO Backend — Python Dependencies
+# ─────────────────────────────────────────────────────────────
+
+# Web Framework
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+
+# Database
+sqlalchemy>=2.0.30
+aiosqlite>=0.20.0
+
+# Settings
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+
+# HTTP
+python-multipart>=0.0.9          # for file upload (UploadFile)
+
+# Logging
+loguru>=0.7.2
+
+# OCR
+pytesseract>=0.3.10
+Pillow>=10.3.0
+
+# PDF support (optional — requires poppler-utils system package)
+pdf2image>=1.17.0
+
+# Analytics
+pandas>=2.2.2
+numpy>=1.26.4
+scikit-learn>=1.4.2
+
+# Speech (optional — install separately if needed)
+# openai-whisper>=20231117

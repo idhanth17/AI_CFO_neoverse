@@ -1,0 +1,49 @@
+# ─── Root .gitignore ──────────────────────────────────────────────────────────
+# Covers both the backend/ Python project and the future frontend/ project.
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Secrets — NEVER commit real .env
+.env
+*.env
+
+# Databases (runtime)
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded files
+uploads/
+backend/uploads/
+
+# Logs
+*.log
+logs/
+
+# Node / frontend
+node_modules/
+.next/
+out/
+dist/
+
+# IDE / OS
+.idea/
+.vscode/
+*.DS_Store
+Thumbs.db
+
+# Whisper model cache
+.cache/
