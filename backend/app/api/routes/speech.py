@@ -25,8 +25,13 @@ from app.schemas.schemas import MultilingualSpeechResponse, SupportedLanguagesRe
 router = APIRouter(prefix="/api/speech", tags=["Speech"])
 
 ALLOWED_AUDIO_TYPES = {
-    "audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg",
-    "audio/webm", "audio/x-wav", "audio/wave",
+    "audio/wav": ".wav",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/ogg": ".ogg",
+    "audio/webm": ".webm",
+    "audio/x-wav": ".wav",
+    "audio/wave": ".wav",
 }
 
 
@@ -103,7 +108,7 @@ async def detect_and_transcribe(
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=f"Unsupported audio type: {file.content_type}. "
-                   f"Accepted: {', '.join(sorted(ALLOWED_AUDIO_TYPES))}",
+                   f"Accepted: {', '.join(sorted(ALLOWED_AUDIO_TYPES.keys()))}",
         )
 
     contents = await file.read()
@@ -113,7 +118,8 @@ async def detect_and_transcribe(
             detail=f"Audio file exceeds {settings.MAX_UPLOAD_MB} MB limit.",
         )
 
-    ext        = Path(file.filename or "audio").suffix or ".wav"
+    # Secure File Extension extraction from Content Type map instead of trusting user input
+    ext = ALLOWED_AUDIO_TYPES.get(base_media_type, ".wav") # default to wav safely if generic audio/ type sent
     unique_name = f"detect_{uuid.uuid4().hex}{ext}"
     save_dir   = Path(settings.UPLOAD_DIR) / "audio"
     save_dir.mkdir(parents=True, exist_ok=True)

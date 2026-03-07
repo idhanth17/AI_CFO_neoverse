@@ -14,7 +14,7 @@ Multilingual support:
 """
 
 import os
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -34,6 +34,7 @@ from app.schemas.schemas import SaleProcessResponse, ParsedItemDetail
 async def process_voice_sale(
     db: AsyncSession,
     audio_path: str,
+    language: Optional[str] = None,
 ) -> SaleProcessResponse:
     """Pipeline: transcribe audio (multilingual) → parse → persist → deduct stock."""
     sale = Sale(raw_audio_path=audio_path, status=SaleStatus.PENDING)
@@ -43,7 +44,7 @@ async def process_voice_sale(
 
     try:
         # ── Multilingual transcription ────────────────────────────────────────
-        speech_result = speech_agent.transcribe_file(audio_path)
+        speech_result = speech_agent.transcribe_file(audio_path, target_language=language)
 
         native_text   = speech_result.native_transcript
         english_text  = speech_result.english_transcript
@@ -179,12 +180,12 @@ async def process_text_sale(
 # Shared parsing + inventory logic
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def amend_sale_voice(db: AsyncSession, audio_path: str, amend_sale_id: int) -> SaleProcessResponse:
+async def amend_sale_voice(db: AsyncSession, audio_path: str, amend_sale_id: int, language: Optional[str] = None) -> SaleProcessResponse:
     sale = await get_sale(db, amend_sale_id)
     if not sale or sale.status != SaleStatus.PENDING:
         raise ValueError("Cannot amend this sale (not found or already processed)")
     
-    speech_result = speech_agent.transcribe_file(audio_path)
+    speech_result = speech_agent.transcribe_file(audio_path, target_language=language)
     existing_eng = sale.english_transcript
     
     sale.raw_audio_path = audio_path
@@ -196,18 +197,35 @@ async def amend_sale_voice(db: AsyncSession, audio_path: str, amend_sale_id: int
 
     logger.info(f"Amending Sale #{sale.id} via voice")
 
-    for itm in sale.items:
-        await db.delete(itm)
-    sale.items.clear()
-    await db.flush()
+    existing_items_str = ", ".join([f"{i.quantity}x {i.raw_name}" for i in sale.items])
+    enhanced_context = f"Original Transcript: '{existing_eng}'.\nCurrent Extracted Items: [{existing_items_str}]."
 
-    return await _process_sale_text(
-        db, sale,
-        parse_text=speech_result.english_transcript,
-        display_transcript=speech_result.native_transcript,
-        speech_result=speech_result,
-        amend_context=existing_eng
-    )
+
+    try:
+        return await _process_sale_text(
+            db, sale,
+            parse_text=speech_result.english_transcript,
+            display_transcript=speech_result.native_transcript,
+            speech_result=speech_result,
+            amend_context=enhanced_context
+        )
+    except ValueError as e:
+        logger.warning(f"Voice amendment failed parsing: {e}")
+        sale.status = SaleStatus.FAILED
+        sale.error_message = str(e)
+        return SaleProcessResponse(
+            sale_id=sale.id,
+            status="failed",
+            message=str(e),
+            transcript=speech_result.native_transcript,
+            english_transcript=speech_result.english_transcript,
+            detected_language=sale.detected_language or "en",
+            language_name=sale.language_name or "English",
+            language_probability=sale.language_probability or 1.0,
+            recording_prompt=RECORDING_PROMPTS.get(sale.detected_language or "en", RECORDING_PROMPTS["en"]),
+            items_parsed=0,
+            total_amount=0.0
+        )
 
 async def amend_sale_text(db: AsyncSession, text: str, amend_sale_id: int, language: Optional[str] = None) -> SaleProcessResponse:
     sale = await get_sale(db, amend_sale_id)
@@ -227,18 +245,36 @@ async def amend_sale_text(db: AsyncSession, text: str, amend_sale_id: int, langu
     
     logger.info(f"Amending Sale #{sale.id} via text")
     
-    for itm in sale.items:
-        await db.delete(itm)
-    sale.items.clear()
+    existing_items_str = ", ".join([f"{i.quantity}x {i.raw_name}" for i in sale.items])
+    enhanced_context = f"Original Transcript: '{existing_eng}'.\nCurrent Extracted Items: [{existing_items_str}]."
+
     await db.flush()
 
-    return await _process_sale_text(
-        db, sale,
-        parse_text=text,
-        display_transcript=text,
-        speech_result=None,
-        amend_context=existing_eng
-    )
+    try:
+        return await _process_sale_text(
+            db, sale,
+            parse_text=text,
+            display_transcript=text,
+            speech_result=None,
+            amend_context=enhanced_context
+        )
+    except Exception as e:
+        logger.warning(f"Text amendment failed parsing: {e}")
+        sale.status = SaleStatus.FAILED
+        sale.error_message = str(e)
+        return SaleProcessResponse(
+            sale_id=sale.id,
+            status="failed",
+            message=str(e),
+            transcript=text,
+            english_transcript=text,
+            detected_language=sale.detected_language or "en",
+            language_name=sale.language_name or "English",
+            language_probability=sale.language_probability or 1.0,
+            recording_prompt=RECORDING_PROMPTS.get(sale.detected_language or "en", RECORDING_PROMPTS["en"]),
+            items_parsed=0,
+            total_amount=0.0
+        )
 
 async def _process_sale_text(
     db: AsyncSession,
@@ -250,7 +286,15 @@ async def _process_sale_text(
 ) -> SaleProcessResponse:
     """Shared logic: parse English text → create SaleItems → prepare Sale"""
 
-    parsed = sales_parser.run(parse_text, existing_context=amend_context)
+    # ── Pre-fetch catalog names for LLM semantic matching ──
+    from app.models.models import Product
+    from sqlalchemy.future import select
+    
+    res = await db.execute(select(Product))
+    all_products = res.scalars().all()
+    all_product_names = [p.name for p in all_products]
+
+    parsed = sales_parser.run(parse_text, existing_context=amend_context, valid_inventory_names=all_product_names)
 
     if not parsed.items:
         raise ValueError(
@@ -258,31 +302,20 @@ async def _process_sale_text(
             f"Try speaking: 'Sold 2 kg rice and 5 soaps' (in any supported language)."
         )
 
-    # ── Pre-check inventory with AI Fuzzy Logic ──
-    from app.services.inventory_service import find_product_by_name
-    from sqlalchemy.future import select
-    from app.models.models import Product
-    import difflib
-
+    # ── Clear old items ONLY after confirming we have new items to replace them with ──
+    if amend_context and sale.items:
+        for itm in sale.items:
+            await db.delete(itm)
+        sale.items.clear()
+        
     missing_products = []
     
-    # Pre-fetch catalog names for fast fuzzy matching
-    res = await db.execute(select(Product))
-    all_products = res.scalars().all()
-    all_product_names = [p.name for p in all_products]
-    
     for parsed_item in parsed.items:
-        # 1. Exact or ilike match first
+        # LLM handled fuzzy/semantic matching already, so just exact/ilike match here
         prod = next((p for p in all_products if p.name.lower() == parsed_item.raw_name.lower()), None)
         
         if not prod:
-            # 2. Fuzzy match closely
-            matches = difflib.get_close_matches(parsed_item.raw_name, all_product_names, n=1, cutoff=0.3)
-            if matches:
-                logger.info(f"AI Auto-correction: '{parsed_item.raw_name}' -> '{matches[0]}'")
-                parsed_item.raw_name = matches[0]
-            else:
-                missing_products.append(parsed_item.raw_name)
+            missing_products.append(parsed_item.raw_name)
 
     if missing_products:
         # Don't set status to FAILED if it just needs correction (keep PENDING)
@@ -341,6 +374,7 @@ async def _process_sale_text(
         total_amount += item_total
         
         parsed_item_details.append(ParsedItemDetail(
+            id=db_item.id,
             raw_name=parsed_item.raw_name,
             inferred_name=prod.name if prod else None,
             quantity=parsed_item.quantity,
@@ -414,11 +448,42 @@ async def _process_sale_text(
         parsed_item_details  = parsed_item_details,
     )
 
-async def confirm_sale_action(db: AsyncSession, sale: Sale) -> SaleProcessResponse:
+async def confirm_sale_action(db: AsyncSession, sale: Sale, overrides: Optional[List] = None) -> SaleProcessResponse:
     if sale.status != SaleStatus.PENDING:
         raise ValueError("Sale is not pending.")
         
-    for db_item in sale.items:
+    override_map = {ov.id: ov for ov in overrides} if overrides else {}
+    final_total_amount = 0.0
+
+    # We might modify the list, so iterate carefully or collect items to process
+    items_to_process = []
+    
+    for db_item in list(sale.items):
+        if db_item.id in override_map:
+            ov = override_map[db_item.id]
+            if ov.deleted:
+                await db.delete(db_item)
+                sale.items.remove(db_item)
+                continue
+            # Apply edits
+            db_item.quantity = ov.quantity
+            db_item.unit_price = ov.unit_price
+            db_item.total_amount = round(ov.quantity * ov.unit_price, 2)
+            
+        items_to_process.append(db_item)
+        final_total_amount += db_item.total_amount
+
+    sale.total_amount = round(final_total_amount, 2)
+    
+    # Recalculate amount paid if partial based on the new total
+    if sale.payment_status == PaymentStatus.CREDIT:
+        sale.amount_paid = 0.0
+    elif sale.payment_status == PaymentStatus.PAID:
+        sale.amount_paid = sale.total_amount
+    else: # PARTIAL
+        sale.amount_paid = round(sale.total_amount / 2, 2)
+
+    for db_item in items_to_process:
         await apply_sale(db, db_item)
 
     sale.status = SaleStatus.PROCESSED

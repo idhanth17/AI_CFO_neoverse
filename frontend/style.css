@@ -534,6 +534,39 @@ body {
   color: var(--text-dim);
 }
 
+.edit-qty,
+.edit-price {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  transition: all var(--transition);
+  outline: none;
+}
+
+.edit-qty:focus,
+.edit-price:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, .2);
+}
+
+.edit-qty {
+  width: 55px;
+  padding: 3px 6px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.edit-price {
+  width: 70px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .select-sm {
   width: auto;
   min-width: 130px;

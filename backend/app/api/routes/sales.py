@@ -12,7 +12,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.db.database import get_db
-from app.schemas.schemas import SaleOut, SaleProcessResponse, TextSaleRequest
+from app.schemas.schemas import SaleOut, SaleProcessResponse, TextSaleRequest, ConfirmSaleRequest
 from app.services.sales_service import (
     process_voice_sale, process_text_sale, get_sale, get_all_sales
 )
@@ -20,8 +20,13 @@ from app.services.sales_service import (
 router = APIRouter(prefix="/api/sales", tags=["Sales"])
 
 ALLOWED_AUDIO_TYPES = {
-    "audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg",
-    "audio/webm", "audio/x-wav", "audio/wave",
+    "audio/wav": ".wav",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/ogg": ".ogg",
+    "audio/webm": ".webm",
+    "audio/x-wav": ".wav",
+    "audio/wave": ".wav",
 }
 
 
@@ -37,6 +42,7 @@ async def record_voice_sale(
     ),
     db: AsyncSession = Depends(get_db),
     amend_sale_id: Optional[int] = Form(None),
+    language: Optional[str] = Form(None),
 ):
     """
     Upload a voice recording in any supported language.
@@ -55,7 +61,8 @@ async def record_voice_sale(
             detail=f"Unsupported audio type: {file.content_type}",
         )
 
-    ext = Path(file.filename or "audio").suffix or ".wav"
+    # Secure File Extension extraction from Content Type map instead of trusting user input
+    ext = ALLOWED_AUDIO_TYPES.get(base_media_type, ".wav") # default to wav safely if generic audio/ type sent
     unique_name = f"{uuid.uuid4().hex}{ext}"
     save_dir = Path(settings.UPLOAD_DIR) / "audio"
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -76,8 +83,11 @@ async def record_voice_sale(
     try:
         if amend_sale_id:
             from app.services.sales_service import amend_sale_voice
-            return await amend_sale_voice(db, str(save_path), amend_sale_id)
-        return await process_voice_sale(db, str(save_path))
+            try:
+                return await amend_sale_voice(db, str(save_path), amend_sale_id, language=language)
+            except ValueError as ve:
+                raise HTTPException(status_code=400, detail=str(ve))
+        return await process_voice_sale(db, str(save_path), language=language)
     finally:
         # Cleanup audio file after processing so we don't store them
         try:
@@ -106,19 +116,27 @@ async def record_text_sale(
     """
     if payload.amend_sale_id:
         from app.services.sales_service import amend_sale_text
-        return await amend_sale_text(db, payload.text, payload.amend_sale_id, language=payload.language)
+        try:
+            return await amend_sale_text(db, payload.text, payload.amend_sale_id, language=payload.language)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
     return await process_text_sale(db, payload.text, language=payload.language)
 
 
 @router.post("/{sale_id}/confirm", response_model=SaleProcessResponse, status_code=status.HTTP_200_OK)
-async def confirm_sale(sale_id: int, db: AsyncSession = Depends(get_db)):
+async def confirm_sale(
+    sale_id: int, 
+    payload: Optional[ConfirmSaleRequest] = None,
+    db: AsyncSession = Depends(get_db)
+):
     """Confirm a pending sale, deducting inventory and updating credit."""
     from app.services.sales_service import confirm_sale_action
     sale = await get_sale(db, sale_id)
     if not sale:
         raise HTTPException(status_code=404, detail="Sale not found")
     try:
-        return await confirm_sale_action(db, sale)
+        overrides = payload.overrides if payload else None
+        return await confirm_sale_action(db, sale, overrides)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

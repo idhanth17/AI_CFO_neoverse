@@ -23,8 +23,12 @@ from app.services.invoice_service import (
 router = APIRouter(prefix="/api/invoices", tags=["Invoices"])
 
 ALLOWED_TYPES = {
-    "image/png", "image/jpeg", "image/tiff",
-    "image/bmp", "image/webp", "application/pdf",
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/tiff": ".tiff",
+    "image/bmp": ".bmp",
+    "image/webp": ".webp",
+    "application/pdf": ".pdf",
 }
 MAX_BYTES = settings.MAX_UPLOAD_MB * 1024 * 1024
 
@@ -42,11 +46,13 @@ async def upload_invoice(
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=f"Unsupported file type: {file.content_type}. "
-                   f"Allowed: {', '.join(ALLOWED_TYPES)}",
+                   f"Allowed: {', '.join(ALLOWED_TYPES.keys())}",
         )
 
     # Save to disk
-    ext = Path(file.filename or "invoice").suffix or ".png"
+    # Extract extension securely from content type, ignoring the untrusted file.filename
+    ext = ALLOWED_TYPES[file.content_type]
+    
     unique_name = f"{uuid.uuid4().hex}{ext}"
     save_dir = Path(settings.UPLOAD_DIR) / "invoices"
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -63,7 +69,8 @@ async def upload_invoice(
         f.write(contents)
 
     logger.info(f"Invoice file saved: {save_path}")
-    return await process_invoice_file(db, str(save_path), file.filename or unique_name)
+    # Fix Path Traversal: Do not pass the original untrusted file.filename into the DB/downstream processes
+    return await process_invoice_file(db, str(save_path), unique_name)
 
 
 @router.get("/", response_model=List[InvoiceOut])

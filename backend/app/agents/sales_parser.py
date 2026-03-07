@@ -144,7 +144,7 @@ class SalesParserAgent:
         "line items with product name and quantity sold."
     )
 
-    def run(self, transcript: str, existing_context: str = None) -> ParsedSale:
+    def run(self, transcript: str, existing_context: str = None, valid_inventory_names: List[str] = None) -> ParsedSale:
         if not transcript or not transcript.strip():
             logger.warning("Sales parser received empty transcript")
             return ParsedSale(raw_text=transcript, items=[])
@@ -188,6 +188,9 @@ CRITICAL RULES:
 5. If words like 'credit', 'later', 'unpaid', 'due' are used, payment_status is "credit".
 6. If it mentions partial payment, payment_status is "partial".
 7. Otherwise, default to "paid".
+8. ALWAYS attempt to semantically match the spoken product name to one of the following valid inventory items:
+   {valid_inventory_names if valid_inventory_names else "[]"}
+   If it's a clear match or a synonym (e.g. "suththi" -> "Hammer", "claw hammer" -> "Hammer"), output the EXACT inventory name as `raw_name`. If there is absolutely no match, output the spoken name.
 {context_prompt}
 
 Respond strictly with valid JSON only. Format:
@@ -199,7 +202,7 @@ Respond strictly with valid JSON only. Format:
 """
                 chat_completion = client.chat.completions.create(
                     messages=[{"role": "user", "content": prompt}],
-                    model="llama-3.1-8b-instant",
+                    model="llama-3.3-70b-versatile",
                     temperature=0.1,
                     response_format={"type": "json_object"}
                 )

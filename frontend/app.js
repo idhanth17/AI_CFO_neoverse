@@ -4,6 +4,7 @@
    ═══════════════════════════════════════════════════ */
 
 const API = 'http://localhost:8000';
+const API_KEY = 'dev-secret-key';
 
 const LANG_FLAGS = { en: '🇬🇧', ta: '🇮🇳', ml: '🇮🇳', hi: '🇮🇳', kn: '🇮🇳' };
 
@@ -69,7 +70,10 @@ async function checkHealth() {
   const dot = document.getElementById('status-dot');
   const txt = document.getElementById('status-text');
   try {
-    const r = await fetch(`${API}/health`, { signal: AbortSignal.timeout(4000) });
+    const r = await fetch(`${API}/health`, {
+      signal: AbortSignal.timeout(4000),
+      headers: { 'X-API-Key': API_KEY }
+    });
     if (r.ok) { dot.className = 'status-dot online'; txt.textContent = 'Backend online'; }
     else throw new Error();
   } catch {
@@ -226,6 +230,11 @@ async function runVoiceSale() {
       currentAmendSaleId = null;
     }
 
+    const selectedLang = document.getElementById('voice-sale-lang')?.value;
+    if (selectedLang) {
+      fd.append('language', selectedLang);
+    }
+
     const data = await apiPost('/api/sales/voice', fd, true);
     const conf = Math.round((data.language_probability || 0) * 100);
     const cls = data.status === 'processed' ? 'success' : (data.status === 'needs_action' ? 'orange' : (data.status === 'pending_confirmation' ? 'info' : 'error'));
@@ -267,18 +276,35 @@ async function runVoiceSale() {
       <div class="result-row"><span class="result-label">Inferred DB Items</span><span class="result-val" style="color: var(--primary); font-weight: 600;">${(data.parsed_item_details || []).map(i => i.inferred_name ? escHtml(i.inferred_name) : `<span style="color:var(--red)">Unmatched (${escHtml(i.raw_name)})</span>`).join(', ') || 'None'
       }</span></div>
       
-      <div class="result-row" style="margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid var(--border); padding-bottom: 5px;">
+      <div class="result-row" style="margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid var(--border); padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center;">
         <span class="result-label" style="font-weight: 600;">Items Parsed (${data.items_parsed})</span>
+        ${data.status === 'pending_confirmation' ? '<span style="font-size: 11px; color: var(--text-muted); padding-right: 5px">✏️ You can edit quantities and prices before confirming</span>' : ''}
       </div>
+      <div id="parsed-items-container-${data.sale_id}">
       ${(data.parsed_item_details || []).map(itm => `
-         <div class="result-row" style="background: rgba(0,0,0,0.02); padding: 8px; border-radius: 4px; margin-bottom: 5px;">
-           <span class="result-label" style="width: auto; margin-right: 15px;">
-             ${itm.quantity}x <strong>${escHtml(itm.raw_name)}</strong>
-             ${itm.inferred_name ? `<br><small style="color: var(--primary); font-weight: 600;">Matched as: ${escHtml(itm.inferred_name)} (₹${itm.unit_price})</small>` : `<br><small style="color: var(--red);">Unmatched item</small>`}
-           </span>
-           <span class="result-val" style="text-align: right; font-weight: 600;">₹${fNum(itm.total_amount)}</span>
+         <div class="result-row parsed-item-row" data-item-id="${itm.id || ''}" style="background: rgba(0,0,0,0.02); padding: 8px; border-radius: 4px; margin-bottom: 5px; display: flex; align-items: center; justify-content: space-between;">
+           <div style="flex: 1; min-width: 0;">
+             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+               ${(data.status === 'pending_confirmation' || data.status === 'needs_action')
+          ? `<input type="number" class="edit-qty text-input" value="${itm.quantity}" step="any">`
+          : `<strong>${itm.quantity}x</strong>`}
+               <strong style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escHtml(itm.raw_name)}">${escHtml(itm.raw_name)}</strong>
+               ${(data.status === 'pending_confirmation' || data.status === 'needs_action')
+          ? `<button class="btn btn-ghost btn-sm" style="color: var(--red); padding: 2px 6px; margin-left: auto;" onclick="markItemDeleted(this)" title="Delete Item">🗑️</button>`
+          : ''}
+             </div>
+             ${itm.inferred_name
+          ? `<small style="color: var(--primary); font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Matched as: ${escHtml(itm.inferred_name)}">Matched: ${escHtml(itm.inferred_name)} 
+                  ${(data.status === 'pending_confirmation' || data.status === 'needs_action')
+            ? `(₹<input type="number" class="edit-price text-input" value="${itm.unit_price}" step="any">)`
+            : `(₹${itm.unit_price})`}
+                  </small>`
+          : `<small style="color: var(--red); display: block;">Unmatched item</small>`}
+           </div>
+           ${(data.status !== 'pending_confirmation' && data.status !== 'needs_action') ? `<span class="result-val" style="font-weight: 600; padding-left: 10px;">₹${fNum(itm.total_amount)}</span>` : ''}
          </div>
       `).join('')}
+      </div>
 
       <div class="result-row" style="margin-top: 10px; font-size: 16px;"><span class="result-label">Total Amount</span><span class="result-val" style="color: var(--primary); font-weight: bold;">₹${fNum(data.total_amount)}</span></div>
       <div class="result-row"><span class="result-label">Message</span><span class="result-val td-muted">${escHtml(data.message || '')}</span></div>
@@ -321,11 +347,59 @@ function startAmendVoice(saleId, oldTranscript) {
   document.getElementById('voice-mode-record').click();
 }
 
+function markItemDeleted(btn) {
+  const row = btn.closest('.parsed-item-row');
+  const isDeleted = row.classList.toggle('item-deleted');
+  if (isDeleted) {
+    row.style.opacity = '0.5';
+    row.style.textDecoration = 'line-through';
+    btn.textContent = 'Undo';
+    btn.style.color = 'var(--text-muted)';
+  } else {
+    row.style.opacity = '1';
+    row.style.textDecoration = 'none';
+    btn.textContent = '🗑️';
+    btn.style.color = 'var(--red)';
+  }
+}
+
 async function confirmSale(saleId) {
   try {
-    const data = await apiPost('/api/sales/' + saleId + '/confirm', null, false);
+    const overrides = [];
+    const container = document.getElementById(`parsed-items-container-${saleId}`);
+
+    if (container) {
+      const rows = container.querySelectorAll('.parsed-item-row');
+      rows.forEach(row => {
+        const id = parseInt(row.dataset.itemId);
+        if (!id) return;
+
+        const isDeleted = row.classList.contains('item-deleted');
+        const qtyInput = row.querySelector('.edit-qty');
+        const priceInput = row.querySelector('.edit-price');
+
+        let qty = 0;
+        let price = 0;
+
+        if (qtyInput && priceInput) {
+          qty = parseFloat(qtyInput.value) || 0;
+          price = parseFloat(priceInput.value) || 0;
+        }
+
+        overrides.push({
+          id: id,
+          quantity: qty,
+          unit_price: price,
+          deleted: isDeleted
+        });
+      });
+    }
+
+    const payload = overrides.length > 0 ? JSON.stringify({ overrides }) : null;
+    const data = await apiPost('/api/sales/' + saleId + '/confirm', payload, false);
+
     if (data.status === 'processed') {
-      toast(`Sale #${data.sale_id} confirmed and inventory updated!`, 'success');
+      toast(`Sale #${data.sale_id} confirmed! Final Total: ₹${fNum(data.total_amount)}`, 'success');
       document.getElementById('voice-result').innerHTML = '';
       document.getElementById('text-sale-result').innerHTML = '';
       if (data.payment_status !== 'paid') {
@@ -599,7 +673,10 @@ async function addProduct() {
 async function deleteProduct(id, name) {
   if (!confirm(`Deactivate "${name}"?`)) return;
   try {
-    const r = await fetch(`${API}/api/inventory/${id}`, { method: 'DELETE' });
+    const r = await fetch(`${API}/api/inventory/${id}`, {
+      method: 'DELETE',
+      headers: { 'X-API-Key': API_KEY }
+    });
     if (r.ok || r.status === 204) { toast(`"${name}" deactivated`, 'info'); loadInventory(); loadLowStock(); }
     else throw new Error(`HTTP ${r.status}`);
   } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
@@ -757,7 +834,10 @@ async function loadSalesHistory() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function apiFetch(path, method = 'GET') {
-  const r = await fetch(API + path, { method });
+  const r = await fetch(API + path, {
+    method,
+    headers: { 'X-API-Key': API_KEY }
+  });
   if (!r.ok) {
     let detail = `HTTP ${r.status}`;
     try { const j = await r.json(); detail = j.detail || JSON.stringify(j); } catch { }
@@ -768,6 +848,7 @@ async function apiFetch(path, method = 'GET') {
 
 async function apiPost(path, body, isFormData = false) {
   const headers = isFormData ? {} : { 'Content-Type': 'application/json' };
+  headers['X-API-Key'] = API_KEY;
   const r = await fetch(API + path, { method: 'POST', headers, body });
   if (!r.ok) {
     let detail = `HTTP ${r.status}`;

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=2" />
 </head>
 
 <body>
@@ -216,6 +216,22 @@
             <div id="voice-file-name" class="file-name-tag" style="display:none"></div>
           </div>
 
+          <!-- Language Selector -->
+          <div style="margin-bottom: 20px;">
+            <label style="display:block; margin-bottom: 6px; font-size: 13px; color: var(--text-muted);">Spoken Language
+              (Optional)</label>
+            <select id="voice-sale-lang" class="input">
+              <option value="">Auto Detect (Default)</option>
+              <option value="en">English</option>
+              <option value="ta">Tamil</option>
+              <option value="ml">Malayalam</option>
+              <option value="hi">Hindi</option>
+              <option value="kn">Kannada</option>
+            </select>
+            <div style="font-size: 11px; color: var(--text-light); margin-top: 4px;">Select your native language for
+              higher accuracy (bypasses auto-detection errors).</div>
+          </div>
+
           <button class="btn btn-success btn-full" id="voice-btn" onclick="runVoiceSale()" disabled>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
@@ -391,7 +407,7 @@
   </main>
 
   <div id="toast-container"></div>
-  <script src="app.js"></script>
+  <script src="app.js?v=2"></script>
 </body>
 
 </html>

@@ -42,6 +42,10 @@ class Settings(BaseSettings):
 
     # ── LLM AI Agent ──────────────────────────────
     GROQ_API_KEY: str = ""
+    
+    # ── Security ──────────────────────────────────
+    # The API key required to access these backend routes from the frontend
+    BACKEND_API_KEY: str = "dev-secret-key"  # Set a safe default for development, should be overridden in prod .env
 
 
 settings = Settings()

@@ -455,8 +455,10 @@ print("=" * 60)
 try:
     from fastapi.testclient import TestClient
     from app.main import app
+    from app.core.config import settings
 
     client = TestClient(app, raise_server_exceptions=False)
+    client.headers.update({"X-API-Key": settings.BACKEND_API_KEY})
 
     # Health
     r = client.get("/health")

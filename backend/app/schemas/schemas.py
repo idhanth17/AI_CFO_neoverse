@@ -161,11 +161,21 @@ class CreditTransactionOut(OrmBase):
 
 
 class ParsedItemDetail(BaseModel):
+    id: Optional[int] = None
     raw_name: str
     inferred_name: Optional[str] = None
     quantity: float
     unit_price: float
     total_amount: float
+
+class ConfirmItemOverride(BaseModel):
+    id: int
+    quantity: float
+    unit_price: float
+    deleted: bool = False
+
+class ConfirmSaleRequest(BaseModel):
+    overrides: Optional[List[ConfirmItemOverride]] = None
 
 
 class SaleProcessResponse(BaseModel):

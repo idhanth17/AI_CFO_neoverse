@@ -204,7 +204,7 @@ class SpeechAgent:
         )
         return result.get("text", "").strip()
 
-    def transcribe_file(self, audio_path: str) -> SpeechResult:
+    def transcribe_file(self, audio_path: str, target_language: Optional[str] = None) -> SpeechResult:
         """
         Full multilingual pipeline for a file path.
 
@@ -229,10 +229,12 @@ class SpeechAgent:
                 
                 with open(audio_path, "rb") as file:
                     # Step 1: Raw transcription precisely as spoken (captures messy colloquialisms)
+                    groq_language = target_language if target_language and target_language in SUPPORTED_LANGUAGES else None
                     transcription = client.audio.transcriptions.create(
                         file=(path.name, file.read()),
                         model="whisper-large-v3",
-                        prompt="Transcribe the colloquial Indian shopkeeper speech exactly as spoken in Tamil, Hindi, Malayalam, Kannada, or English. Contains terms like cement, items, pipes, etc."
+                        prompt="Transcribe the colloquial Indian shopkeeper speech exactly as spoken in Tamil, Hindi, Malayalam, Kannada, or English. Contains terms like cement, items, pipes, etc.",
+                        **({"language": groq_language} if groq_language else {})
                     )
                     
                 raw_text = transcription.text.strip()
@@ -248,7 +250,8 @@ You are given a raw, messy voice transcript from a hardware/grocery shop.
 Your job is to:
 1. Identify the primary base language spoken (en, ta, hi, ml, kn). Keep it exactly one of these codes.
 2. Clean up the native text transcript by removing filler words, but keep it in its original language formatting.
-3. Translate the items and quantities perfectly into a natural, conversational English sentence. 
+3. Translate the items and quantities perfectly into a natural, conversational English sentence.
+4. CRITICAL: If the input language is already English, set BOTH `native_text` and `english_translation` to the cleaned up English string. DO NOT translate English into Tamil or any other language. 
 
 Raw Transcript: "{raw_text}"
 
@@ -303,13 +306,19 @@ CRITICAL: The 'english_translation' field MUST be a plain natural language text 
                 "Install openai-whisper: pip install openai-whisper"
             )
 
-        # ① Detect language
-        detected_lang, lang_prob = self._detect_language(str(path))
+        # ① Detect language (or use explicit target)
+        if target_language and target_language in SUPPORTED_LANGUAGES:
+            detected_lang = target_language
+            lang_prob = 1.0  # Explicitly set
+            logger.info(f"[SpeechAgent] Using explicit target language: {detected_lang}")
+        else:
+            detected_lang, lang_prob = self._detect_language(str(path))
+            
         lang_name = SUPPORTED_LANGUAGES.get(detected_lang, "Unknown")
         recording_prompt = RECORDING_PROMPTS.get(detected_lang, RECORDING_PROMPTS["en"])
 
         logger.info(
-            f"[SpeechAgent] Detected language: {lang_name} "
+            f"[SpeechAgent] Detected/Target language: {lang_name} "
             f"({detected_lang}) — {lang_prob:.1%} confidence"
         )
 

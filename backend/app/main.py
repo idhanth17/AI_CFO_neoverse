@@ -10,12 +10,13 @@ Docs:     http://localhost:8000/docs
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.core.config import settings
 from app.db.database import init_db
+from app.core.security import verify_api_key
 from app.api.routes import invoices, sales, inventory, analytics, speech
 
 
@@ -90,13 +91,13 @@ app.add_middleware(
 
 
 # ─────────────────────────────────────────────
-# Routers
+# Routers (Secured by verify_api_key dependency)
 # ─────────────────────────────────────────────
-app.include_router(invoices.router)
-app.include_router(sales.router)
-app.include_router(inventory.router)
-app.include_router(analytics.router)
-app.include_router(speech.router)
+app.include_router(invoices.router, dependencies=[Depends(verify_api_key)])
+app.include_router(sales.router, dependencies=[Depends(verify_api_key)])
+app.include_router(inventory.router, dependencies=[Depends(verify_api_key)])
+app.include_router(analytics.router, dependencies=[Depends(verify_api_key)])
+app.include_router(speech.router, dependencies=[Depends(verify_api_key)])
 
 
 # ─────────────────────────────────────────────
