@@ -506,8 +506,9 @@ async def confirm_sale_action(db: AsyncSession, sale: Sale, overrides: Optional[
             credit_updated = True
             logger.info(f"Credit applied to {customer.name}: +₹{unpaid}")
             logger.info(f"🔔 [EVENT: SMS TRIGGER] Send SMS to {customer.name}: 'Payment of ₹{unpaid} is pending for today's purchase.'")
-
-    await db.commit()
+            
+    # Allow the FastAPI Dependency context manager `async with session.begin()` to commit this block.
+    await db.flush()
     
     lang_code  = sale.detected_language or "en"
     lang_name  = sale.language_name or "English"

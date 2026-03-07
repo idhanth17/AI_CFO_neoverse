@@ -256,7 +256,7 @@ async function runVoiceSale() {
         <div style="margin-top: 15px; padding: 12px; background: rgba(33, 150, 243, 0.1); border-left: 3px solid var(--primary); border-radius: 4px;">
           <h4 style="margin: 0 0 8px 0; color: var(--primary)">Please Confirm Sale</h4>
           <p style="margin: 0 0 10px 0; font-size: 13px">Review the parsed items above. Click Confirm to log this sale, or Amend to correct it via voice.</p>
-          <div style="display: flex; gap: 8px;">
+          <div class="actions-row" data-sale-id="${data.sale_id}" style="display: flex; gap: 8px;">
             <button class="btn btn-primary btn-sm" onclick="confirmSale(${data.sale_id})">Confirm Sale</button>
             <button class="btn btn-ghost btn-sm" style="color: var(--primary)" onclick="startAmendVoice(${data.sale_id}, '${escapeSingleQuotes(data.english_transcript)}')">Amend via Mic</button>
             <button class="btn btn-ghost btn-sm" style="color: var(--red)" onclick="cancelSale()">Cancel</button>
@@ -395,18 +395,33 @@ async function confirmSale(saleId) {
       });
     }
 
-    const payload = overrides.length > 0 ? JSON.stringify({ overrides }) : null;
-    const data = await apiPost('/api/sales/' + saleId + '/confirm', payload, false);
+    const overridesObj = overrides.length > 0 ? { overrides } : {};
+    const data = await apiPost('/api/sales/' + saleId + '/confirm', JSON.stringify(overridesObj), false);
 
     if (data.status === 'processed') {
       toast(`Sale #${data.sale_id} confirmed! Final Total: ₹${fNum(data.total_amount)}`, 'success');
-      document.getElementById('voice-result').innerHTML = '';
-      document.getElementById('text-sale-result').innerHTML = '';
+
+      // Update UI to prevent resubmission
+      const actionsDiv = document.querySelector(`.actions-row[data-sale-id="${saleId}"]`);
+      if (actionsDiv) {
+        actionsDiv.innerHTML = `
+          <div style="color: var(--green); font-weight: 500; display: flex; align-items: center; gap: 6px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            Sale Successfully Recorded
+          </div>
+        `;
+      }
+
       if (data.payment_status !== 'paid') {
         setTimeout(() => toast(`📱 SMS Sent to ${data.customer_name || 'Customer'}: pending payment reminder`, 'info'), 1000);
       }
-      loadAnalytics();
-      loadInventory();
+
+      // Delay fetching table so DB can flush properly
+      setTimeout(() => {
+        loadAnalytics();
+        loadInventory();
+      }, 500);
+
     } else {
       toast(data.message || 'Error confirming sale', 'error');
     }
@@ -467,7 +482,7 @@ async function runTextSale() {
         <div style="margin-top: 15px; padding: 12px; background: rgba(33, 150, 243, 0.1); border-left: 3px solid var(--primary); border-radius: 4px;">
           <h4 style="margin: 0 0 8px 0; color: var(--primary)">Please Confirm Sale</h4>
           <p style="margin: 0 0 10px 0; font-size: 13px">Review the parsed items above. Click Confirm to log this sale, or Amend to correct it.</p>
-          <div style="display: flex; gap: 8px;">
+          <div class="actions-row" data-sale-id="${data.sale_id}" style="display: flex; gap: 8px;">
             <button class="btn btn-primary btn-sm" onclick="confirmSale(${data.sale_id})">Confirm Sale</button>
             <button class="btn btn-ghost btn-sm" style="color: var(--primary)" onclick="startAmendVoice(${data.sale_id}, '${escapeSingleQuotes(data.english_transcript)}')">Amend via Mic</button>
             <button class="btn btn-ghost btn-sm" style="color: var(--red)" onclick="cancelSale()">Cancel</button>
