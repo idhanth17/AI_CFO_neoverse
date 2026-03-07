@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI CFO — Small Business Survival Agent</title>
+  <meta name="description"
+    content="AI CFO test dashboard — test all backend features including multilingual speech recognition, invoice OCR, inventory management, and analytics." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M12 2L2 7l10 5 10-5-10-5z" />
+          <path d="M2 17l10 5 10-5" />
+          <path d="M2 12l10 5 10-5" />
+        </svg>
+      </div>
+      <span class="brand-name">AI CFO</span>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" id="nav-dashboard" onclick="showTab('dashboard')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+        </svg>
+        Dashboard
+      </button>
+      <button class="nav-item" id="nav-speech" onclick="showTab('speech')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+          <line x1="12" y1="19" x2="12" y2="23" />
+          <line x1="8" y1="23" x2="16" y2="23" />
+        </svg>
+        Speech &amp; Sales
+        <span class="badge-new">NEW</span>
+      </button>
+      <button class="nav-item" id="nav-invoices" onclick="showTab('invoices')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+        Invoices
+      </button>
+      <button class="nav-item" id="nav-inventory" onclick="showTab('inventory')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="8" y1="6" x2="21" y2="6" />
+          <line x1="8" y1="12" x2="21" y2="12" />
+          <line x1="8" y1="18" x2="21" y2="18" />
+          <line x1="3" y1="6" x2="3.01" y2="6" />
+          <line x1="3" y1="12" x2="3.01" y2="12" />
+          <line x1="3" y1="18" x2="3.01" y2="18" />
+        </svg>
+        Inventory
+      </button>
+      <button class="nav-item" id="nav-analytics" onclick="showTab('analytics')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="20" x2="18" y2="10" />
+          <line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+        </svg>
+        Analytics
+      </button>
+      <button class="nav-item" id="nav-sales-list" onclick="showTab('sales-list')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+        </svg>
+        Sales History
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="api-status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Connecting…</span>
+      </div>
+      <div class="api-url-label">Backend: <code>localhost:8000</code></div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main-content">
+    <header class="topbar">
+      <h1 class="page-title" id="page-title">📊 Dashboard</h1>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" onclick="refreshCurrentTab()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          Refresh
+        </button>
+        <a class="btn btn-ghost" href="http://localhost:8000/docs" target="_blank">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          API Docs
+        </a>
+      </div>
+    </header>
+
+    <!-- ═══════════ DASHBOARD ═══════════ -->
+    <section class="tab-panel active" id="tab-dashboard">
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card skeleton"></div>
+        <div class="stat-card skeleton"></div>
+        <div class="stat-card skeleton"></div>
+        <div class="stat-card skeleton"></div>
+        <div class="stat-card skeleton"></div>
+        <div class="stat-card skeleton"></div>
+      </div>
+      <div class="grid-2col">
+        <div class="card">
+          <div class="card-header">
+            <h3>Profit Summary</h3>
+          </div>
+          <div class="table-wrap" id="profit-table">
+            <div class="empty-state">Loading…</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>Restock Alerts</h3>
+          </div>
+          <div class="table-wrap" id="restock-table">
+            <div class="empty-state">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ SPEECH & SALES ═══════════ -->
+    <section class="tab-panel" id="tab-speech">
+      <div class="grid-2col">
+
+        <!-- FULL WIDTH: Voice Sale -->
+        <div class="card" style="grid-column:1/-1">
+          <div class="card-header">
+            <h3>🛒 Record a Voice Sale</h3>
+          </div>
+          <p class="card-desc">Record or upload your voice describing what was sold. Works in English, Tamil, Malayalam,
+            Hindi, or Kannada. Inventory is automatically deducted.</p>
+
+          <div class="mode-toggle">
+            <button class="mode-btn active" id="voice-mode-record" onclick="setVoiceMode('record')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              </svg>
+              Record Mic
+            </button>
+            <button class="mode-btn" id="voice-mode-upload" onclick="setVoiceMode('upload')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              Upload File
+            </button>
+          </div>
+
+          <!-- Mic recording UI -->
+          <div id="voice-record-ui">
+            <div class="mic-area" id="voice-mic-area">
+              <div class="mic-visual" id="voice-mic-visual">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              </div>
+              <div class="mic-status" id="voice-mic-status">Click to start recording</div>
+              <div class="mic-timer" id="voice-mic-timer" style="display:none">00:00</div>
+            </div>
+            <div class="rec-btn-row">
+              <button class="btn btn-record" id="voice-rec-start" onclick="startRecording('voice')">
+                <span class="rec-dot"></span> Start Recording
+              </button>
+              <button class="btn btn-stop" id="voice-rec-stop" onclick="stopRecording('voice')" style="display:none">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                </svg>
+                Stop
+              </button>
+              <button class="btn btn-ghost btn-sm" id="voice-rec-discard" onclick="discardRecording('voice')"
+                style="display:none">Discard</button>
+            </div>
+            <div id="voice-recorded-tag" class="file-name-tag" style="display:none"></div>
+          </div>
+
+          <!-- File upload UI -->
+          <div id="voice-upload-ui" style="display:none">
+            <div class="upload-zone" id="voice-zone" onclick="document.getElementById('voice-file').click()">
+              <div class="upload-icon">🔊</div>
+              <div class="upload-text">Click to select voice recording<br /><small>WAV, MP3, M4A, OGG, WEBM</small>
+              </div>
+              <input type="file" id="voice-file" accept="audio/*" style="display:none"
+                onchange="handleVoiceFile(this)" />
+            </div>
+            <div id="voice-file-name" class="file-name-tag" style="display:none"></div>
+          </div>
+
+          <button class="btn btn-success btn-full" id="voice-btn" onclick="runVoiceSale()" disabled>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+            Submit Voice Sale
+          </button>
+          <div id="voice-result" class="result-box" style="display:none"></div>
+        </div>
+
+        <!-- FULL WIDTH: Text Sale -->
+        <div class="card" style="grid-column:1/-1">
+          <div class="card-header">
+            <h3>✍️ Text Sale Entry</h3>
+          </div>
+          <p class="card-desc">Type a natural language description of what was sold. Try the sample prompts below, then
+            hit Submit or press Enter.</p>
+
+          <!-- Quick sample chips -->
+          <div class="sample-chips">
+            <span class="sample-label">Quick samples:</span>
+            <button class="chip" onclick="setSample('sold 2 kg rice and 5 soaps')">2 kg rice + 5 soaps</button>
+            <button class="chip" onclick="setSample('3 packets biscuits and 1 litre oil')">3 biscuits + 1L oil</button>
+            <button class="chip" onclick="setSample('sold ten pens and 2 kg sugar')">10 pens + 2 kg sugar</button>
+            <button class="chip" onclick="setSample('1 kg dal and 500 gm turmeric')">1 kg dal + turmeric</button>
+          </div>
+
+          <div class="input-row">
+            <input type="text" id="text-sale-input" class="input" placeholder="e.g. sold 2 kg rice and 5 soaps" />
+            <select id="text-sale-lang" class="input select-sm">
+              <option value="">Auto / English</option>
+              <option value="en">English</option>
+              <option value="ta">Tamil</option>
+              <option value="ml">Malayalam</option>
+              <option value="hi">Hindi</option>
+              <option value="kn">Kannada</option>
+            </select>
+            <button class="btn btn-success" onclick="runTextSale()">Submit</button>
+          </div>
+          <div id="text-sale-result" class="result-box" style="display:none"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ INVOICES ═══════════ -->
+    <section class="tab-panel" id="tab-invoices">
+      <div class="grid-2col">
+        <div class="card">
+          <div class="card-header">
+            <h3>📄 Upload Supplier Invoice</h3>
+          </div>
+          <p class="card-desc">Upload a PNG, JPG, or PDF invoice. OCR will extract the data and auto-update inventory
+            stock levels.</p>
+          <div class="upload-zone" id="inv-zone" onclick="document.getElementById('inv-file').click()">
+            <div class="upload-icon">📋</div>
+            <div class="upload-text">Click to select invoice<br /><small>PNG, JPG, TIFF, BMP, PDF</small></div>
+            <input type="file" id="inv-file" accept="image/*,.pdf" style="display:none"
+              onchange="handleInvFile(this)" />
+          </div>
+          <div id="inv-file-name" class="file-name-tag" style="display:none"></div>
+          <button class="btn btn-primary btn-full" id="inv-btn" onclick="runInvoiceUpload()" disabled>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            Upload &amp; Process Invoice
+          </button>
+          <div id="inv-result" class="result-box" style="display:none"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>Invoice History</h3>
+            <button class="btn btn-ghost btn-sm" onclick="loadInvoices()">Refresh</button>
+          </div>
+          <div class="table-wrap" id="invoices-table">
+            <div class="empty-state">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ INVENTORY ═══════════ -->
+    <section class="tab-panel" id="tab-inventory">
+      <div class="grid-2col">
+        <div class="card" style="grid-column:1/-1">
+          <div class="card-header">
+            <h3>📦 Product Catalogue</h3>
+            <div class="header-actions">
+              <button class="btn btn-ghost btn-sm" onclick="loadInventory()">Refresh</button>
+              <button class="btn btn-primary btn-sm" onclick="toggleAddProduct()">+ Add Product</button>
+            </div>
+          </div>
+          <div id="add-product-form" class="inline-form" style="display:none">
+            <div class="form-grid">
+              <div class="form-group"><label>Name *</label><input type="text" id="p-name" class="input"
+                  placeholder="Rice" /></div>
+              <div class="form-group"><label>SKU</label><input type="text" id="p-sku" class="input"
+                  placeholder="RICE-001" /></div>
+              <div class="form-group"><label>Cost Price (₹)</label><input type="number" id="p-cost" class="input"
+                  value="40" min="0" step="0.01" /></div>
+              <div class="form-group"><label>Selling Price (₹)</label><input type="number" id="p-sell" class="input"
+                  value="50" min="0" step="0.01" /></div>
+              <div class="form-group"><label>GST Rate (%)</label><input type="number" id="p-gst" class="input" value="5"
+                  min="0" max="100" /></div>
+              <div class="form-group"><label>Current Stock</label><input type="number" id="p-stock" class="input"
+                  value="100" min="0" step="0.001" /></div>
+              <div class="form-group"><label>Unit</label><input type="text" id="p-unit" class="input" value="kg" />
+              </div>
+              <div class="form-group"><label>Reorder Point</label><input type="number" id="p-reorder" class="input"
+                  value="10" min="0" /></div>
+            </div>
+            <p class="card-desc" style="margin-top:4px">💡 <strong>Quick add:</strong>
+              <button class="chip" onclick="prefillProduct('Rice','RICE-001',40,50,5,100,'kg',10)">Rice</button>
+              <button class="chip" onclick="prefillProduct('Soap','SOAP-001',15,25,12,200,'pcs',20)">Soap</button>
+              <button class="chip" onclick="prefillProduct('Oil','OIL-001',90,120,5,50,'litre',5)">Oil</button>
+              <button class="chip" onclick="prefillProduct('Sugar','SUGAR-001',38,45,5,80,'kg',10)">Sugar</button>
+              <button class="chip"
+                onclick="prefillProduct('Biscuits','BISC-001',10,18,12,300,'pkt',30)">Biscuits</button>
+            </p>
+            <div class="form-actions">
+              <button class="btn btn-primary" onclick="addProduct()">Save Product</button>
+              <button class="btn btn-ghost" onclick="toggleAddProduct()">Cancel</button>
+            </div>
+            <div id="add-product-result" class="result-box" style="display:none"></div>
+          </div>
+          <div class="table-wrap" id="inventory-table">
+            <div class="empty-state">Loading…</div>
+          </div>
+        </div>
+        <div class="card" style="grid-column:1/-1">
+          <div class="card-header">
+            <h3>⚠️ Low Stock Alerts</h3>
+            <button class="btn btn-ghost btn-sm" onclick="loadLowStock()">Refresh</button>
+          </div>
+          <div class="table-wrap" id="lowstock-table">
+            <div class="empty-state">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ ANALYTICS ═══════════ -->
+    <section class="tab-panel" id="tab-analytics">
+      <div class="sub-tabs">
+        <button class="sub-tab active" onclick="showSubTab('profit')" id="stab-profit">Profit Analysis</button>
+        <button class="sub-tab" onclick="showSubTab('demand')" id="stab-demand">Demand Forecast</button>
+        <button class="sub-tab" onclick="showSubTab('restock')" id="stab-restock">Restock Recs</button>
+        <button class="sub-tab" onclick="showSubTab('gst')" id="stab-gst">GST Summary</button>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <h3 id="analytics-title">Profit Analysis</h3>
+          <button class="btn btn-ghost btn-sm" onclick="loadCurrentAnalytics()">Refresh</button>
+        </div>
+        <div class="table-wrap" id="analytics-table">
+          <div class="empty-state">Loading…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ SALES HISTORY ═══════════ -->
+    <section class="tab-panel" id="tab-sales-list">
+      <div class="card">
+        <div class="card-header">
+          <h3>All Sales Sessions</h3>
+          <button class="btn btn-ghost btn-sm" onclick="loadSalesHistory()">Refresh</button>
+        </div>
+        <div class="table-wrap" id="sales-history-table">
+          <div class="empty-state">Loading…</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast-container"></div>
+  <script src="app.js"></script>
+</body>
+
+</html>
