@@ -5,6 +5,7 @@ Invoice Routes — /api/invoices
 import os
 import uuid
 from pathlib import Path
+from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -65,7 +66,7 @@ async def upload_invoice(
     return await process_invoice_file(db, str(save_path), file.filename or unique_name)
 
 
-@router.get("/", response_model=list[InvoiceOut])
+@router.get("/", response_model=List[InvoiceOut])
 async def list_invoices(db: AsyncSession = Depends(get_db)):
     """List all invoices (newest first)."""
     invoices = await get_all_invoices(db)

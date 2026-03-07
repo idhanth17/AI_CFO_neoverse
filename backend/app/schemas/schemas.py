@@ -117,22 +117,76 @@ class SaleItemOut(OrmBase):
 
 
 class SaleOut(OrmBase):
-    id:           int
-    status:       str
-    raw_text:     Optional[str]
+    id:                   int
+    customer_id:          Optional[int]
+    status:               str
+    raw_text:             Optional[str]
+    detected_language:    Optional[str]
+    language_name:        Optional[str]
+    language_probability: Optional[float]
+    english_transcript:   Optional[str]
+    amount_paid:          float
+    total_amount:         float
+    payment_status:       str
+    sale_date:            Optional[datetime]
+    created_at:           Optional[datetime]
+    items:                List[SaleItemOut] = []
+
+
+# ════════════════════════════════════════════════════════════
+# Customer / Credit schemas
+# ════════════════════════════════════════════════════════════
+
+class CustomerCreate(BaseModel):
+    name: str
+    phone: Optional[str] = None
+
+
+class CustomerOut(OrmBase):
+    id: int
+    name: str
+    phone: Optional[str]
+    total_credit: float
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+
+
+class CreditTransactionOut(OrmBase):
+    id: int
+    customer_id: int
+    sale_id: Optional[int]
+    amount: float
+    transaction_type: str
+    created_at: Optional[datetime]
+
+
+class ParsedItemDetail(BaseModel):
+    raw_name: str
+    inferred_name: Optional[str] = None
+    quantity: float
+    unit_price: float
     total_amount: float
-    sale_date:    Optional[datetime]
-    created_at:   Optional[datetime]
-    items:        List[SaleItemOut] = []
 
 
 class SaleProcessResponse(BaseModel):
-    sale_id:      int
-    status:       str
-    message:      str
-    transcript:   str
-    items_parsed: int
-    total_amount: float
+    sale_id:              int
+    status:               str
+    message:              str
+    transcript:           str                 # native-language transcript
+    english_transcript:   str                 # English translation
+    detected_language:    str                 # ISO 639-1 code
+    language_name:        str                 # Human-readable name
+    language_probability: float               # 0–1 confidence
+    recording_prompt:     str                 # Suggested prompt for shopkeeper
+    items_parsed:         int
+    total_amount:         float
+    customer_name:        Optional[str]       = None
+    payment_status:       str                 = "paid"
+    missing_products:     List[str]           = []
+    needs_action:         bool                = False
+    inventory_updated:    bool                = False
+    credit_updated:       bool                = False
+    parsed_item_details:  List[ParsedItemDetail] = []
 
 
 class TextSaleRequest(BaseModel):
@@ -141,6 +195,34 @@ class TextSaleRequest(BaseModel):
         min_length=3,
         description="Natural language description, e.g. 'sold 2 kg rice and 5 soaps'",
     )
+    language: Optional[str] = Field(
+        None,
+        description="Optional ISO 639-1 language hint (en/ta/ml/hi/kn). Auto-detected if omitted.",
+    )
+    amend_sale_id: Optional[int] = Field(
+        None,
+        description="Sale ID to amend if this is a correction to a pending sale",
+    )
+
+
+# ════════════════════════════════════════════════════════════
+# Speech / Multilingual schemas
+# ════════════════════════════════════════════════════════════
+
+class MultilingualSpeechResponse(BaseModel):
+    """Response from the dedicated speech detection endpoint."""
+    detected_language:    str
+    language_name:        str
+    language_probability: float
+    native_transcript:    str
+    english_transcript:   str
+    recording_prompt:     str
+
+
+class SupportedLanguagesResponse(BaseModel):
+    """List of supported languages with recording prompts."""
+    languages:        Dict[str, str]   # {iso_code: language_name}
+    recording_prompts: Dict[str, str]  # {iso_code: prompt_text}
 
 
 # ════════════════════════════════════════════════════════════

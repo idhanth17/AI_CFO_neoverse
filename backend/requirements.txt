@@ -32,5 +32,9 @@ pandas>=2.2.2
 numpy>=1.26.4
 scikit-learn>=1.4.2
 
-# Speech (optional — install separately if needed)
-# openai-whisper>=20231117
+# Speech — Multilingual (auto-detect EN / Tamil / Malayalam / Hindi / Kannada)
+openai-whisper>=20231117
+
+# PyTorch (CPU build) — required by Whisper for language detection & translation.
+# For GPU support replace with: pip install torch --index-url https://download.pytorch.org/whl/cu118
+torch>=2.1.0

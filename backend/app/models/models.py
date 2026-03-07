@@ -40,6 +40,17 @@ class SaleStatus(str, enum.Enum):
     FAILED    = "failed"
 
 
+class PaymentStatus(str, enum.Enum):
+    PAID    = "paid"
+    CREDIT  = "credit"
+    PARTIAL = "partial"
+
+
+class TransactionType(str, enum.Enum):
+    CREDIT  = "credit"
+    PAYMENT = "payment"
+
+
 # ────────────────────────────────────────────────────────────
 # Product — master catalogue
 # ────────────────────────────────────────────────────────────
@@ -81,6 +92,29 @@ class Product(Base):
 
     def __repr__(self) -> str:
         return f"<Product id={self.id} name={self.name!r} stock={self.current_stock}>"
+
+
+# ────────────────────────────────────────────────────────────
+# Customer — ledger and credit tracking
+# ────────────────────────────────────────────────────────────
+
+class Customer(Base):
+    __tablename__ = "customers"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    name           = Column(String(200), nullable=False, index=True)
+    phone          = Column(String(50), nullable=True)
+    total_credit   = Column(Float, default=0.0, nullable=False)
+    
+    created_at     = Column(DateTime, default=func.now())
+    updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    sales: Mapped[List["Sale"]] = relationship("Sale", back_populates="customer", lazy="select")
+    credit_transactions: Mapped[List["CreditTransaction"]] = relationship("CreditTransaction", back_populates="customer", lazy="select")
+
+    def __repr__(self) -> str:
+        return f"<Customer id={self.id} name={self.name!r} credit={self.total_credit}>"
 
 
 # ────────────────────────────────────────────────────────────
@@ -224,11 +258,22 @@ class Sale(Base):
     __tablename__ = "sales"
 
     id             = Column(Integer, primary_key=True, index=True)
+    customer_id    = Column(Integer, ForeignKey("customers.id"), nullable=True)
     status         = Column(Enum(SaleStatus), default=SaleStatus.PENDING, nullable=False)
 
+    # Payment / Credits
+    amount_paid    = Column(Float, default=0.0)
+    payment_status = Column(Enum(PaymentStatus), default=PaymentStatus.PAID, nullable=False)
+
     # Input
-    raw_audio_path = Column(String(500), nullable=True)
-    raw_text       = Column(Text, nullable=True)
+    raw_audio_path        = Column(String(500), nullable=True)
+    raw_text              = Column(Text, nullable=True)
+
+    # Multilingual speech fields
+    detected_language     = Column(String(10), nullable=True)   # ISO 639-1 code, e.g. "ta"
+    language_name         = Column(String(50), nullable=True)   # e.g. "Tamil"
+    language_probability  = Column(Float, nullable=True)        # Whisper detection confidence 0-1
+    english_transcript    = Column(Text, nullable=True)         # EN translation of raw_text
 
     # Aggregate
     total_amount   = Column(Float, default=0.0)
@@ -239,8 +284,12 @@ class Sale(Base):
     created_at     = Column(DateTime, default=func.now())
 
     # Relationships
+    customer: Mapped[Optional["Customer"]] = relationship("Customer", back_populates="sales")
     items: Mapped[List["SaleItem"]] = relationship(
         "SaleItem", back_populates="sale", cascade="all, delete-orphan", lazy="select"
+    )
+    credit_transactions: Mapped[List["CreditTransaction"]] = relationship(
+        "CreditTransaction", back_populates="sale", lazy="select"
     )
 
     def __repr__(self) -> str:
@@ -270,3 +319,26 @@ class SaleItem(Base):
 
     def __repr__(self) -> str:
         return f"<SaleItem id={self.id} name={self.raw_name!r} qty={self.quantity}>"
+
+
+# ────────────────────────────────────────────────────────────
+# CreditTransaction — ledger entries for customers
+# ────────────────────────────────────────────────────────────
+
+class CreditTransaction(Base):
+    __tablename__ = "credit_transactions"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    customer_id      = Column(Integer, ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    sale_id          = Column(Integer, ForeignKey("sales.id"), nullable=True)
+    amount           = Column(Float, nullable=False) # Positive value
+    transaction_type = Column(Enum(TransactionType), nullable=False) # credit or payment
+    
+    created_at       = Column(DateTime, default=func.now())
+
+    # Relationships
+    customer: Mapped["Customer"] = relationship("Customer", back_populates="credit_transactions")
+    sale: Mapped[Optional["Sale"]] = relationship("Sale", back_populates="credit_transactions")
+
+    def __repr__(self) -> str:
+        return f"<CreditTransaction id={self.id} type={self.transaction_type} amount={self.amount}>"

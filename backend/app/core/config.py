@@ -40,5 +40,8 @@ class Settings(BaseSettings):
     # ── Whisper ───────────────────────────────────
     WHISPER_MODEL: str = "base"      # tiny | base | small | medium
 
+    # ── LLM AI Agent ──────────────────────────────
+    GROQ_API_KEY: str = ""
+
 
 settings = Settings()

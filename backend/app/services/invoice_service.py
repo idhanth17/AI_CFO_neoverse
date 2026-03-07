@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from loguru import logger
 
 from app.models.models import Invoice, InvoiceItem, InvoiceStatus
@@ -119,13 +120,17 @@ async def process_invoice_file(
 
 async def get_invoice(db: AsyncSession, invoice_id: int) -> Optional[Invoice]:
     result = await db.execute(
-        select(Invoice).where(Invoice.id == invoice_id)
+        select(Invoice)
+        .options(selectinload(Invoice.items))
+        .where(Invoice.id == invoice_id)
     )
     return result.scalar_one_or_none()
 
 
 async def get_all_invoices(db: AsyncSession) -> list:
     result = await db.execute(
-        select(Invoice).order_by(Invoice.created_at.desc())
+        select(Invoice)
+        .options(selectinload(Invoice.items))
+        .order_by(Invoice.created_at.desc())
     )
     return list(result.scalars().all())

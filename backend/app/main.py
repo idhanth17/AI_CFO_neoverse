@@ -16,7 +16,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.db.database import init_db
-from app.api.routes import invoices, sales, inventory, analytics
+from app.api.routes import invoices, sales, inventory, analytics, speech
 
 
 # ─────────────────────────────────────────────
@@ -62,7 +62,9 @@ into structured financial intelligence for small retail shops.
 ### AI Agents
 - **OCR Agent** — Tesseract OCR on invoice images / PDFs
 - **Invoice Parser** — regex-based structured extraction
-- **Speech Agent** — Whisper offline speech-to-text
+- **Speech Agent** — Whisper offline multilingual speech-to-text
+      (auto-detects English, Tamil, Malayalam, Hindi, Kannada;
+       returns native transcript **+** English translation)
 - **Sales Parser** — NLP parsing of voice transcripts
 - **Profit Intelligence** — Pandas margin analysis per product
 - **Demand Prediction** — Moving Average + Linear Regression (Scikit-Learn)
@@ -94,6 +96,7 @@ app.include_router(invoices.router)
 app.include_router(sales.router)
 app.include_router(inventory.router)
 app.include_router(analytics.router)
+app.include_router(speech.router)
 
 
 # ─────────────────────────────────────────────
