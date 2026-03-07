@@ -285,7 +285,7 @@ async def _process_sale_text(
                 missing_products.append(parsed_item.raw_name)
 
     if missing_products:
-        sale.status = SaleStatus.FAILED
+        # Don't set status to FAILED if it just needs correction (keep PENDING)
         sale.error_message = f"Products not in inventory: {', '.join(missing_products)}"
         logger.warning(f"Sale #{sale.id} paused - Missing products: {missing_products}")
         

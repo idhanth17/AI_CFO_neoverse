@@ -165,4 +165,3 @@ sale_items      — items per sale session          →  products
 stock += purchase_quantity   # on invoice processed
 stock -= sale_quantity       # on customer sale recorded
 ```
->>>>>>> 13fcc2c... feat: initial backend scaffold

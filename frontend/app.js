@@ -264,6 +264,8 @@ async function runVoiceSale() {
       <div class="result-row"><span class="result-label">Payment</span><span class="result-val"><span class="badge badge-${data.payment_status === 'paid' ? 'success' : (data.payment_status === 'partial' ? 'info' : 'orange')}">${data.payment_status === 'paid' ? 'Paid' : (data.payment_status === 'partial' ? 'Partial' : 'Credit / Due')}</span></span></div>
       <div class="result-row"><span class="result-label">Transcript</span><span class="result-val">${escHtml(data.transcript || '(empty)')}</span></div>
       <div class="result-row"><span class="result-label">English Translation</span><span class="result-val highlight">${escHtml(data.english_transcript || '(empty)')}</span></div>
+      <div class="result-row"><span class="result-label">Inferred DB Items</span><span class="result-val" style="color: var(--primary); font-weight: 600;">${(data.parsed_item_details || []).map(i => i.inferred_name ? escHtml(i.inferred_name) : `<span style="color:var(--red)">Unmatched (${escHtml(i.raw_name)})</span>`).join(', ') || 'None'
+      }</span></div>
       
       <div class="result-row" style="margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid var(--border); padding-bottom: 5px;">
         <span class="result-label" style="font-weight: 600;">Items Parsed (${data.items_parsed})</span>
@@ -407,6 +409,8 @@ async function runTextSale() {
       <div class="result-row"><span class="result-label">Customer Name</span><span class="result-val">${escHtml(data.customer_name || 'N/A')}</span></div>
       <div class="result-row"><span class="result-label">Payment</span><span class="result-val"><span class="badge badge-${data.payment_status === 'paid' ? 'success' : (data.payment_status === 'partial' ? 'info' : 'orange')}">${data.payment_status === 'paid' ? 'Paid' : (data.payment_status === 'partial' ? 'Partial' : 'Credit / Due')}</span></span></div>
       <div class="result-row"><span class="result-label">English Text</span><span class="result-val highlight">${escHtml(data.english_transcript || data.transcript || '')}</span></div>
+      <div class="result-row"><span class="result-label">Inferred DB Items</span><span class="result-val" style="color: var(--primary); font-weight: 600;">${(data.parsed_item_details || []).map(i => i.inferred_name ? escHtml(i.inferred_name) : `<span style="color:var(--red)">Unmatched (${escHtml(i.raw_name)})</span>`).join(', ') || 'None'
+      }</span></div>
       
       <div class="result-row" style="margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid var(--border); padding-bottom: 5px;">
         <span class="result-label" style="font-weight: 600;">Items Parsed (${data.items_parsed})</span>

@@ -160,7 +160,19 @@ class SalesParserAgent:
                 client = Groq(api_key=settings.GROQ_API_KEY)
                 context_prompt = ""
                 if existing_context:
-                    context_prompt = f'Previous Transcript: "{existing_context}"\nUser correction: "{transcript}"\nCombine the previous context with this correction.'
+                    context_prompt = f'''
+Previous Transcript / Context: "{existing_context}"
+User's New Instruction / Correction: "{transcript}"
+
+CRITICAL AMENDMENT RULES FOR CORRECTIONS:
+1. You are modifying the **Previous Transcript** using the **User's New Instruction**.
+2. **DO NOT DELETE ANY PREVIOUS ITEMS** unless the user explicitly tells you to remove/cancel them.
+3. If the user says "add X", "also X", "and X", you MUST APPEND X to the existing list of items.
+4. If the user says "remove X", "cancel X", "delete X", "no X", or "not X", you MUST REMOVE that specific item from the list, but strictly KEEP ALL OTHER existing items.
+5. If the user specifies a new quantity for an existing item (e.g. "change X to 5", "make X 3"), UPDATE the quantity of that item and KEEP ALL OTHER existing items.
+6. If the user says something like "start over", "scratch that", "clear everything", "reset", "from the start": DISCARD ALL previous items entirely and ONLY extract the new items mentioned.
+7. YOUR FINAL OUTPUT MUST BE THE COMPLETE, MERGED LIST OF ALL VALID ITEMS (both old and new, minus any deletions). It is a catastrophic failure if you randomly drop previous items that weren't told to be removed.
+'''
                 else:
                     context_prompt = f'Transcript: "{transcript}"'
 
@@ -187,7 +199,7 @@ Respond strictly with valid JSON only. Format:
 """
                 chat_completion = client.chat.completions.create(
                     messages=[{"role": "user", "content": prompt}],
-                    model="llama3-8b-8192",
+                    model="llama-3.1-8b-instant",
                     temperature=0.1,
                     response_format={"type": "json_object"}
                 )

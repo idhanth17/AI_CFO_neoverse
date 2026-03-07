@@ -1,0 +1,179 @@
+
+============================================================
+SECTION 1 - Configuration & Environment
+============================================================
+  [PASS]  DATABASE_URL uses SQLite
+         sqlite+aiosqlite:///./ai_cfo.db
+  [PASS]  WHISPER_MODEL is valid
+         small
+  [PASS]  MAX_UPLOAD_MB is positive
+         20
+  [PASS]  UPLOAD_DIR is set
+         ./uploads
+
+============================================================
+SECTION 2 - Database & Models
+============================================================
+  [PASS]  Database init (create_all)
+  [PASS]  Sale model has all 4 multilingual columns
+         All present
+  [PASS]  Sale row persisted to DB
+  [PASS]  detected_language round-trips correctly
+  [PASS]  language_probability round-trips correctly
+
+============================================================
+SECTION 3 - Schemas (Pydantic)
+============================================================
+  [PASS]  SaleProcessResponse.english_transcript works
+  [PASS]  SaleProcessResponse.detected_language works
+  [PASS]  SaleProcessResponse.recording_prompt works
+  [PASS]  MultilingualSpeechResponse.detected_language
+  [PASS]  MultilingualSpeechResponse.language_probability
+  [PASS]  TextSaleRequest.language optional field works
+  [PASS]  TextSaleRequest.language defaults to None
+  [PASS]  SupportedLanguagesResponse.languages field works
+
+============================================================
+SECTION 4 - Speech Agent (Multilingual)
+============================================================
+  [PASS]  Whisper is installed
+  [PASS]  Language code 'en' present in supported_languages()
+  [PASS]  Language code 'ta' present in supported_languages()
+  [PASS]  Language code 'ml' present in supported_languages()
+  [PASS]  Language code 'hi' present in supported_languages()
+  [PASS]  Language code 'kn' present in supported_languages()
+  [PASS]  recording_prompt for 'en' is non-empty
+  [PASS]  recording_prompt for 'ta' is non-empty
+  [PASS]  recording_prompt for 'ml' is non-empty
+  [PASS]  recording_prompt for 'hi' is non-empty
+  [PASS]  recording_prompt for 'kn' is non-empty
+  [PASS]  SpeechResult dataclass instantiates
+  [PASS]  transcribe_file() returns SpeechResult instance
+  [PASS]  detected_language is 2-char ISO code
+         en
+  [PASS]  detected_language is a supported code
+         en
+  [PASS]  language_probability is float
+         1.0
+  [PASS]  native_transcript is str
+  [PASS]  english_transcript is str
+  [PASS]  recording_prompt is non-empty
+  [PASS]  transcribe_file_simple() returns plain str (backward compat)
+
+============================================================
+SECTION 5 - Sales Parser (Existing Feature)
+============================================================
+  [PASS]  Parser: 'sold 2 kg rice and 5 soaps' -> 2 item(s)
+         Got 2: ['Rice', 'Soaps']
+  [PASS]  Parser: '2 packets biscuits, 1 litre oil' -> 2 item(s)
+         Got 2: ['Biscuits', 'Oil']
+  [PASS]  Parser: 'rice 2 kg, oil 1 litre, sugar 500 gm' -> 3 item(s)
+         Got 3: ['Kg', 'Litre', 'Gm']
+  [PASS]  Parser: 'gave 3 soaps and 1 kg sugar to customer' -> 2 item(s)
+         Got 2: ['Soaps', 'Sugar To Customer']
+  [PASS]  Parser: 'sold ten pens' -> 1 item(s)
+         Got 1: ['Pens']
+
+============================================================
+SECTION 6 - Sales Service (Text Pipeline)
+============================================================
+  [FAIL]  Text sale: status=processed
+         Preview: Sale ready to be confirmed.
+  [PASS]  Text sale: items_parsed >= 1
+         1
+  [PASS]  Text sale: detected_language=en
+         en
+  [PASS]  Text sale: english_transcript preserved
+  [PASS]  Text sale: recording_prompt returned
+
+============================================================
+SECTION 7 - Voice Sale (Synthetic WAV / Whisper)
+============================================================
+  [PASS]  Voice sale: sale_id assigned
+         38
+  [PASS]  Voice sale: status is processed or failed
+         failed
+  [PASS]  Voice sale: detected_language is a supported ISO code
+         en
+  [PASS]  Voice sale: language_probability is float
+         1.0
+  [PASS]  Voice sale: english_transcript is str
+  [PASS]  Voice sale: recording_prompt non-empty
+
+============================================================
+SECTION 8 - FastAPI Route Registration
+============================================================
+  [PASS]  Route registered: POST /api/sales/voice
+  [PASS]  Route registered: POST /api/sales/text
+  [PASS]  Route registered: GET /api/sales/
+  [PASS]  Route registered: GET /api/sales/{sale_id}
+  [PASS]  Route registered: POST /api/invoices/upload
+  [PASS]  Route registered: GET /api/invoices/
+  [PASS]  Route registered: GET /api/inventory/
+  [PASS]  Route registered: POST /api/inventory/
+  [PASS]  Route registered: GET /api/analytics/dashboard
+  [PASS]  Route registered: GET /api/speech/languages
+  [PASS]  Route registered: POST /api/speech/detect
+  [PASS]  Route registered: GET /health
+
+============================================================
+SECTION 9 - HTTP Integration Tests (TestClient)
+============================================================
+  [PASS]  GET /health -> 200
+  [PASS]  GET / -> 200
+  [PASS]  GET /api/inventory/ -> 200
+  [PASS]  GET /api/sales/ -> 200
+  [PASS]  GET /api/invoices/ -> 200
+  [PASS]  GET /api/speech/languages -> 200
+  [PASS]    response has 'languages' key
+  [PASS]    response has 'recording_prompts' key
+  [PASS]    All 5 language codes present
+  [PASS]  POST /api/sales/text (English) -> 2xx
+         201
+  [PASS]    /api/sales/text response has 'english_transcript'
+  [PASS]    /api/sales/text response has 'detected_language'
+  [PASS]    /api/sales/text response has 'language_name'
+  [PASS]    /api/sales/text response has 'recording_prompt'
+  [PASS]  POST /api/sales/text (language hint) -> 2xx
+         201
+  [PASS]  POST /api/speech/detect (WAV) -> 200 or 500
+         200
+  [PASS]    /api/speech/detect response has 'detected_language'
+  [PASS]    /api/speech/detect response has 'language_name'
+  [PASS]    /api/speech/detect response has 'language_probability'
+  [PASS]    /api/speech/detect response has 'native_transcript'
+  [PASS]    /api/speech/detect response has 'english_transcript'
+  [PASS]    /api/speech/detect response has 'recording_prompt'
+  [PASS]    detected_language is a supported ISO code
+         en
+  [PASS]  POST /api/speech/detect (txt) -> 415
+         415
+  [PASS]  POST /api/sales/voice (WAV) -> 2xx
+         201
+  [PASS]    /api/sales/voice response has 'sale_id'
+         41
+  [PASS]    /api/sales/voice response has 'status'
+         failed
+  [PASS]    /api/sales/voice response has 'transcript'
+         Translator's note.
+  [PASS]    /api/sales/voice response has 'english_transcript'
+         Translator's note.
+  [PASS]    /api/sales/voice response has 'detected_language'
+         en
+  [PASS]    /api/sales/voice response has 'language_name'
+         English (Auto-translated)
+  [PASS]    /api/sales/voice response has 'language_probability'
+         1.0
+  [PASS]    /api/sales/voice response has 'recording_prompt'
+         Please speak clearly ? describe the items sold today.
+
+============================================================
+SUMMARY
+============================================================
+  Total  : 98
+  Passed : 97 [PASS]
+  Failed : 1 [FAIL]
+
+  Failed tests:
+    [FAIL]  Text sale: status=processed
+

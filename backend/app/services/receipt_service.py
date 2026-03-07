@@ -88,7 +88,4 @@ async def save_parsed_receipt(
         )
         db.add(item)
     
-    await db.commit()
-    await db.refresh(receipt)
-    
     return receipt
