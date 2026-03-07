@@ -44,7 +44,7 @@ async def process_voice_sale(
 
     try:
         # ── Multilingual transcription ────────────────────────────────────────
-        speech_result = speech_agent.transcribe_file(audio_path, target_language=language)
+        speech_result = await speech_agent.transcribe_file(audio_path, target_language=language)
 
         native_text   = speech_result.native_transcript
         english_text  = speech_result.english_transcript
@@ -185,7 +185,7 @@ async def amend_sale_voice(db: AsyncSession, audio_path: str, amend_sale_id: int
     if not sale or sale.status != SaleStatus.PENDING:
         raise ValueError("Cannot amend this sale (not found or already processed)")
     
-    speech_result = speech_agent.transcribe_file(audio_path, target_language=language)
+    speech_result = await speech_agent.transcribe_file(audio_path, target_language=language)
     existing_eng = sale.english_transcript
     
     sale.raw_audio_path = audio_path

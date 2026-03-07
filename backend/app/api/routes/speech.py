@@ -131,7 +131,7 @@ async def detect_and_transcribe(
     logger.info(f"[SpeechDetect] Audio saved for detection: {save_path}")
 
     try:
-        result = speech_agent.transcribe_file(str(save_path))
+        result = await speech_agent.transcribe_file(str(save_path))
     except Exception as exc:
         logger.error(f"[SpeechDetect] Transcription failed: {exc}")
         raise HTTPException(

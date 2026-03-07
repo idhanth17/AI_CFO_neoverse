@@ -28,6 +28,11 @@ async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
 
+    # ── Security Validation ──────────────────────
+    if not settings.BACKEND_API_KEY or settings.BACKEND_API_KEY == "dev-secret-key":
+        logger.error("CRITICAL SECURITY ERROR: BACKEND_API_KEY is not securely set.")
+        raise RuntimeError("Refusing to start. You must define a strong BACKEND_API_KEY in the environment (.env) for production and testing. Do not use the default 'dev-secret-key'.")
+
     # Ensure upload directories exist
     for subdir in ["invoices", "audio"]:
         Path(settings.UPLOAD_DIR, subdir).mkdir(parents=True, exist_ok=True)

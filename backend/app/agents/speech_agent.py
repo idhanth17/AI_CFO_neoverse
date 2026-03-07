@@ -204,13 +204,13 @@ class SpeechAgent:
         )
         return result.get("text", "").strip()
 
-    def transcribe_file(self, audio_path: str, target_language: Optional[str] = None) -> SpeechResult:
+    async def transcribe_file(self, audio_path: str, target_language: Optional[str] = None) -> SpeechResult:
         """
         Full multilingual pipeline for a file path.
 
         Steps
         -----
-        1. If GROQ API is present, use ultra-fast Whisper cloud translation.
+        1. If GROQ API is present, use ultra-fast Whisper cloud translation via AsyncGroq.
         2. Else fallback to local Whisper.
         """
         path = Path(audio_path)
@@ -223,28 +223,28 @@ class SpeechAgent:
         if settings.GROQ_API_KEY:
             try:
                 import json
-                from groq import Groq
-                client = Groq(api_key=settings.GROQ_API_KEY)
-                logger.info("[SpeechAgent] Using lightning-fast Groq API for STT")
+                from groq import AsyncGroq
+                logger.info("[SpeechAgent] Using lightning-fast local AsyncGroq API for STT")
                 
-                with open(audio_path, "rb") as file:
-                    # Step 1: Raw transcription precisely as spoken (captures messy colloquialisms)
-                    groq_language = target_language if target_language and target_language in SUPPORTED_LANGUAGES else None
-                    transcription = client.audio.transcriptions.create(
-                        file=(path.name, file.read()),
-                        model="whisper-large-v3",
-                        prompt="Transcribe the colloquial Indian shopkeeper speech exactly as spoken in Tamil, Hindi, Malayalam, Kannada, or English. Contains terms like cement, items, pipes, etc.",
-                        **({"language": groq_language} if groq_language else {})
-                    )
-                    
-                raw_text = transcription.text.strip()
-                logger.info(f"[SpeechAgent] Groq Raw Transcript: {raw_text}")
+                async with AsyncGroq(api_key=settings.GROQ_API_KEY) as client:
+                    with open(audio_path, "rb") as file:
+                        # Step 1: Raw transcription precisely as spoken (captures messy colloquialisms)
+                        groq_language = target_language if target_language and target_language in SUPPORTED_LANGUAGES else None
+                        transcription = await client.audio.transcriptions.create(
+                            file=(path.name, file.read()),
+                            model="whisper-large-v3",
+                            prompt="Transcribe the colloquial Indian shopkeeper speech exactly as spoken in Tamil, Hindi, Malayalam, Kannada, or English. Contains terms like cement, items, pipes, etc.",
+                            **({"language": groq_language} if groq_language else {})
+                        )
+                        
+                    raw_text = transcription.text.strip()
+                    logger.debug(f"[SpeechAgent] Groq transcript received ({len(raw_text)} chars)")
 
-                if not raw_text:
-                    raise ValueError("Empty audio transcription.")
+                    if not raw_text:
+                        raise ValueError("Empty audio transcription.")
 
-                # Step 2: Intelligent translation and cleaning via LLaMA 70B
-                translation_prompt = f"""
+                    # Step 2: Intelligent translation and cleaning via LLaMA 70B
+                    translation_prompt = f"""
 You are an expert translator specializing in colloquial Indian shopkeeper dialects (Tanglish, Hinglish, Manglish, etc.).
 You are given a raw, messy voice transcript from a hardware/grocery shop.
 Your job is to:
@@ -264,37 +264,51 @@ CRITICAL: The 'english_translation' field MUST be a plain natural language text 
   "english_translation": "clear english translation string"
 }}
 """
-                chat_completion = client.chat.completions.create(
-                    messages=[{"role": "user", "content": translation_prompt}],
-                    model="llama-3.3-70b-versatile",
-                    temperature=0.1,
-                    response_format={"type": "json_object"}
-                )
-                
-                res = json.loads(chat_completion.choices[0].message.content)
-                resolved_lang = res.get("language", "en")
-                if resolved_lang not in SUPPORTED_LANGUAGES:
-                    resolved_lang = "en"
+                    # Execute fast translation explicitly via async client
+                    comp = await client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[
+                            {"role": "system", "content": translation_prompt},
+                            {"role": "user", "content": raw_text}
+                        ],
+                        temperature=0.0,
+                        response_format={"type": "json_object"}
+                    )
+                    
+                    out = comp.choices[0].message.content
+                    out_js = json.loads(out)
+                    
+                    final_english = out_js.get("english_translation", raw_text).strip()
+                    resolved_lang = out_js.get("language", target_language or "en") # Changed from detected_language to language
+                    
+                    logger.info(f"[SpeechAgent] LLaMA translation completed (lang={resolved_lang}, chars={len(final_english)})")
+                    
+                    # Check for explicit errors
+                    if final_english.upper() == "NULL" or not final_english:
+                        raise ValueError("LLM returned empty or NULL translation.")
 
-                final_native = res.get("native_text", raw_text)
-                final_english = res.get("english_translation", raw_text)
-                
-                # The LLM sometimes hallucinates a dict instead of string if it thinks it's extracting items.
-                if isinstance(final_native, dict):
-                    final_native = json.dumps(final_native)
-                if isinstance(final_english, dict):
-                    final_english = json.dumps(final_english)
-                
-                logger.info(f"[SpeechAgent] LLaMA Translation: {final_english} (Detected: {resolved_lang})")
-                
-                return SpeechResult(
-                    native_transcript    = final_native,
-                    english_transcript   = final_english,
-                    detected_language    = resolved_lang,
-                    language_name        = SUPPORTED_LANGUAGES[resolved_lang],
-                    language_probability = 1.0,
-                    recording_prompt     = RECORDING_PROMPTS[resolved_lang],
-                )
+                    # The LLM sometimes hallucinates a dict instead of string if it thinks it's extracting items.
+                    # Also, the LLM might not return native_text if it's just translating.
+                    # For now, we'll use the raw_text as native_text if the LLM doesn't provide it.
+                    final_native = out_js.get("native_text", raw_text).strip()
+
+                    if isinstance(final_native, dict):
+                        final_native = json.dumps(final_native)
+                    if isinstance(final_english, dict):
+                        final_english = json.dumps(final_english)
+                    
+                    # Ensure resolved_lang is one of the supported languages
+                    if resolved_lang not in SUPPORTED_LANGUAGES:
+                        resolved_lang = "en" # Fallback to English if LLM gives an unsupported language
+                    
+                    return SpeechResult(
+                        native_transcript    = final_native,
+                        english_transcript   = final_english,
+                        detected_language    = resolved_lang,
+                        language_name        = SUPPORTED_LANGUAGES[resolved_lang],
+                        language_probability = 1.0,
+                        recording_prompt     = RECORDING_PROMPTS[resolved_lang],
+                    )
             except Exception as e:
                 logger.error(f"[SpeechAgent] Groq API failed, falling back to local Whisper: {e}")
 
@@ -344,7 +358,7 @@ CRITICAL: The 'english_translation' field MUST be a plain natural language text 
             recording_prompt     = recording_prompt,
         )
 
-    def transcribe_bytes(
+    async def transcribe_bytes(
         self,
         audio_bytes: bytes,
         suffix: str = ".wav",
@@ -358,18 +372,19 @@ CRITICAL: The 'english_translation' field MUST be a plain natural language text 
             tmp_path = tmp.name
 
         try:
-            return self.transcribe_file(tmp_path)
+            return await self.transcribe_file(tmp_path)
         finally:
             os.unlink(tmp_path)
 
     # ── Legacy compatibility (plain str) ─────────────────────────────────────
 
-    def transcribe_file_simple(self, audio_path: str) -> str:
+    async def transcribe_file_simple(self, audio_path: str) -> str:
         """
         Backward-compatible helper that returns just the English transcript
         string (mirrors the original API so existing call-sites don't break).
         """
-        return self.transcribe_file(audio_path).english_transcript
+        res = await self.transcribe_file(audio_path)
+        return res.english_transcript
 
     # ── Utility ───────────────────────────────────────────────────────────────
 

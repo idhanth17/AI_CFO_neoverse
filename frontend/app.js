@@ -3,8 +3,11 @@
    Full mic recording + all features
    ═══════════════════════════════════════════════════ */
 
+// =======================================================================
+// GLOBAL STATE & SECRETS
+// =======================================================================
 const API = 'http://localhost:8000';
-const API_KEY = 'dev-secret-key';
+const API_KEY = 'neoverse-secure-key-2026';
 
 const LANG_FLAGS = { en: '🇬🇧', ta: '🇮🇳', ml: '🇮🇳', hi: '🇮🇳', kn: '🇮🇳' };
 

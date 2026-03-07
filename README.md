@@ -99,7 +99,8 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env — set TESSERACT_CMD, WHISPER_MODEL, etc.
+# Edit .env — you MUST set BACKEND_API_KEY to secure your backend!
+# You should also set TESSERACT_CMD, WHISPER_MODEL, and GROQ_API_KEY.
 ```
 
 ### 4. Run
@@ -115,14 +116,18 @@ uvicorn app.main:app --reload --port 8000
 
 ## API Reference
 
+> **Security Note:** ALL endpoints below require an `X-API-Key` HTTP header that matches the `BACKEND_API_KEY` in your `.env` file.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/invoices/upload` | Upload supplier invoice (image/PDF) |
-| GET | `/api/invoices/` | List all invoices |
-| GET | `/api/invoices/{id}` | Invoice detail + line items |
-| POST | `/api/sales/voice` | Voice recording of daily sales |
-| POST | `/api/sales/text` | Text fallback for sales entry |
-| GET | `/api/sales/` | List all sales |
+| POST | `/api/invoices/upload` | Upload & parse supplier invoice |
+| GET  | `/api/invoices/` | List all invoices |
+| GET  | `/api/invoices/{id}` | Invoice detail + line items |
+| POST | `/api/sales/voice` | Voice recording of daily sales (Returns PENDING) |
+| POST | `/api/sales/text` | Text fallback for sales entry (Returns PENDING) |
+| POST | `/api/sales/{sale_id}/amend` | Voice/Text amendment of pending sale |
+| POST | `/api/sales/{sale_id}/confirm` | Confirms pending sale & deducts stock |
+| GET  | `/api/sales/` | List all sales |
 | GET | `/api/inventory/` | All products + stock levels |
 | POST | `/api/inventory/` | Add product manually |
 | GET | `/api/inventory/low-stock` | Products below reorder point |
@@ -141,8 +146,8 @@ uvicorn app.main:app --reload --port 8000
 |-------|-----------|-------|--------|
 | OCR Agent | Tesseract | Invoice image/PDF | Raw text |
 | Invoice Parser | Regex + rules | OCR text | Structured line items |
-| Speech Agent | Whisper (offline) | Audio file | Transcript |
-| Sales Parser | NLP + regex | Transcript | Sale items |
+| Speech Agent | AsyncGroq / Whisper-Large-v3 | Audio file | Transcript (Multilingual) |
+| Sales Parser | Llama 3.3 70B (AsyncGroq) | Messy Transcript | Perfect English Sale items |
 | Profit Agent | Pandas | Sales + products | Margin analysis |
 | Demand Agent | Moving Avg + LinearRegression | Sales history | Forecasts |
 | Restock Agent | Formula-based | Demand + stock | Reorder qtys |

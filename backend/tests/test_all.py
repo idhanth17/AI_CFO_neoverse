@@ -24,6 +24,9 @@ from loguru import logger
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
 
+# Mock secure environment variables before loading settings
+os.environ["BACKEND_API_KEY"] = "test-secret-key"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Test framework helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -231,45 +234,48 @@ try:
     )
     check(sr.detected_language == "en", "SpeechResult dataclass instantiates")
 
-    # Full pipeline on a synthetic WAV (sine tone — will get noisy transcript)
-    wav_bytes = make_sine_wav(440, 1.5)
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        tmp.write(wav_bytes)
-        tmp_path = tmp.name
+    async def run_speech_agent_tests():
+        # Full pipeline on a synthetic WAV (sine tone — will get noisy transcript)
+        wav_bytes = make_sine_wav(440, 1.5)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(wav_bytes)
+            tmp_path = tmp.name
 
-    try:
-        result = speech_agent.transcribe_file(tmp_path)
-        check(isinstance(result, SpeechResult),
-              "transcribe_file() returns SpeechResult instance")
-        check(len(result.detected_language) == 2,
-              "detected_language is 2-char ISO code",
-              result.detected_language)
-        check(result.detected_language in SUPPORTED_LANGUAGES,
-              "detected_language is a supported code",
-              result.detected_language)
-        check(isinstance(result.language_probability, float),
-              "language_probability is float",
-              str(result.language_probability))
-        check(isinstance(result.native_transcript, str),
-              "native_transcript is str")
-        check(isinstance(result.english_transcript, str),
-              "english_transcript is str")
-        check(len(result.recording_prompt) > 0,
-              "recording_prompt is non-empty")
-    finally:
-        os.unlink(tmp_path)
+        try:
+            result = await speech_agent.transcribe_file(tmp_path)
+            check(isinstance(result, SpeechResult),
+                  "transcribe_file() returns SpeechResult instance")
+            check(len(result.detected_language) == 2,
+                  "detected_language is 2-char ISO code",
+                  result.detected_language)
+            check(result.detected_language in SUPPORTED_LANGUAGES,
+                  "detected_language is a supported code",
+                  result.detected_language)
+            check(isinstance(result.language_probability, float),
+                  "language_probability is float",
+                  str(result.language_probability))
+            check(isinstance(result.native_transcript, str),
+                  "native_transcript is str")
+            check(isinstance(result.english_transcript, str),
+                  "english_transcript is str")
+            check(len(result.recording_prompt) > 0,
+                  "recording_prompt is non-empty")
+        finally:
+            os.unlink(tmp_path)
 
-    # backward-compat helper
-    wav_bytes2 = make_sine_wav(880, 1.0)
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp2:
-        tmp2.write(wav_bytes2)
-        tmp2_path = tmp2.name
-    try:
-        simple = speech_agent.transcribe_file_simple(tmp2_path)
-        check(isinstance(simple, str),
-              "transcribe_file_simple() returns plain str (backward compat)")
-    finally:
-        os.unlink(tmp2_path)
+        # backward-compat helper
+        wav_bytes2 = make_sine_wav(880, 1.0)
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp2:
+            tmp2.write(wav_bytes2)
+            tmp2_path = tmp2.name
+        try:
+            simple = await speech_agent.transcribe_file_simple(tmp2_path)
+            check(isinstance(simple, str),
+                  "transcribe_file_simple() returns plain str (backward compat)")
+        finally:
+            os.unlink(tmp2_path)
+            
+    asyncio.run(run_speech_agent_tests())
 
 except Exception as exc:
     report("Speech agent tests", False, str(exc))
@@ -340,8 +346,8 @@ async def test_sales_service() -> None:
                 resp = await process_text_sale(
                     session, "sold 2 kg rice", language="en")
 
-        check(resp.status == "processed",
-              "Text sale: status=processed", resp.message)
+        check(resp.status == "pending_confirmation",
+              "Text sale: status=pending_confirmation", resp.message)
         check(resp.items_parsed >= 1,
               "Text sale: items_parsed >= 1", str(resp.items_parsed))
         check(resp.detected_language == "en",
@@ -384,8 +390,8 @@ async def test_voice_sale() -> None:
 
         check(resp.sale_id > 0,
               "Voice sale: sale_id assigned", str(resp.sale_id))
-        check(resp.status in ("processed", "failed"),
-              "Voice sale: status is processed or failed", resp.status)
+        check(resp.status in ("pending_confirmation", "needs_action", "failed"),
+              "Voice sale: status is pending_confirmation, needs_action or failed", resp.status)
         check(resp.detected_language in {"en", "ta", "ml", "hi", "kn"},
               "Voice sale: detected_language is a supported ISO code",
               resp.detected_language)
