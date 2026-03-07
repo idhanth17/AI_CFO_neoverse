@@ -79,20 +79,25 @@ class ProfitIntelligenceAgent:
             .reset_index()
         )
 
+        # Create a dictionary for rapid unit lookup: product_id -> unit
+        id_to_unit = {int(p.id): p.unit for _, p in rows if p}
+
         results = []
         for _, row in summary.iterrows():
             margin_pct = 0.0
             if row["total_cost"] > 0:
                 margin_pct = round(row["gross_profit"] / row["total_cost"] * 100, 2)
 
+            res_pid = int(row["product_id"])
             results.append(ProfitSummary(
-                product_id=int(row["product_id"]),
+                product_id=res_pid,
                 product_name=row["product_name"],
-                total_sold_qty=round(row["total_sold_qty"], 3),
+                units_sold=round(row["total_sold_qty"], 3),
                 total_revenue=round(row["total_revenue"], 2),
-                total_cost=round(row["total_cost"], 2),
+                total_cogs=round(row["total_cost"], 2),
                 gross_profit=round(row["gross_profit"], 2),
                 margin_pct=margin_pct,
+                unit=id_to_unit.get(res_pid, "pcs")
             ))
 
         results.sort(key=lambda x: x.gross_profit, reverse=True)
@@ -176,15 +181,19 @@ class DemandPredictionAgent:
                 days_until_stockout = round(current_stock / avg_daily, 1)
                 stockout_risk = days_until_stockout <= 7
 
+            # Get the unit for this product
+            id_to_unit = {int(p.id): p.unit for _, _, p in rows if p}
+
             forecasts.append(DemandForecast(
                 product_id=int(product_id),
                 product_name=str(product_name),
-                avg_daily_demand=round(avg_daily, 3),
+                avg_daily_sales=round(avg_daily, 3),
                 forecast_7d=forecast_7d,
                 forecast_30d=forecast_30d,
                 current_stock=round(current_stock, 2),
                 stockout_risk=stockout_risk,
                 days_until_stockout=days_until_stockout,
+                unit=id_to_unit.get(int(product_id), "pcs")
             ))
 
         forecasts.sort(key=lambda x: (x.stockout_risk, -(x.days_until_stockout or 9999)))
@@ -217,7 +226,7 @@ class RestockRecommendationAgent:
 
         demand_map: Dict[int, float] = {}
         if demand_forecasts:
-            demand_map = {f.product_id: f.avg_daily_demand for f in demand_forecasts}
+            demand_map = {f.product_id: f.avg_daily_sales for f in demand_forecasts}
 
         recommendations = []
         for product in products:
@@ -256,9 +265,10 @@ class RestockRecommendationAgent:
                 product_name=product.name,
                 current_stock=round(product.current_stock, 2),
                 reorder_point=round(product.reorder_point, 2),
-                recommended_qty=reorder_qty,
+                reorder_quantity=reorder_qty,
                 urgency=urgency,
                 reason=reason,
+                unit=product.unit
             ))
 
         order = {"critical": 0, "soon": 1, "ok": 2}
@@ -322,6 +332,17 @@ class GSTSummaryTool:
 
         summaries = []
         for month_str, group in df.groupby("month"):
+            # Split "YYYY-MM"
+            y_str, m_str = month_str.split("-")
+            
+            taxable = float(group["total_amount"].sum() - group["gst_amount"].sum())
+            total_gst = float(group["gst_amount"].sum())
+            
+            # Simple assumption for simulation: 50/50 CGST/SGST if no IGST
+            cgst = round(total_gst / 2, 2)
+            sgst = round(total_gst / 2, 2)
+            igst = 0.0
+
             breakdown_df = (
                 group.groupby("gst_rate")["gst_amount"]
                 .sum()
@@ -331,10 +352,14 @@ class GSTSummaryTool:
             breakdown = breakdown_df.to_dict(orient="records")
 
             summaries.append(GSTSummary(
-                month=str(month_str),
-                total_purchases=round(group["total_amount"].sum(), 2),
-                total_gst_paid=round(group["gst_amount"].sum(), 2),
-                invoice_count=int(group["invoice_id"].nunique()),
+                year=int(y_str),
+                month=int(m_str),
+                taxable_amount=round(taxable, 2),
+                cgst=cgst,
+                sgst=sgst,
+                igst=igst,
+                total_gst=round(total_gst, 2),
+                item_count=int(group["invoice_id"].nunique()),
                 breakdown=breakdown,
             ))
 

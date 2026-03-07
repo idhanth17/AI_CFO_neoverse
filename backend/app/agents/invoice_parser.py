@@ -18,6 +18,8 @@ from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict, Any
 from loguru import logger
 
+from app.agents.normalizer import normalize_receipt
+
 
 @dataclass
 class ParsedItem:
@@ -148,54 +150,81 @@ def _parse_line_items(text: str) -> List[ParsedItem]:
     if gst_match:
         global_gst = float(gst_match.group(1))
 
-    for line in text.splitlines():
-        line = line.strip()
-        if len(line) < 8:
+    # PaddleOCR outputs boxes out of order or on separate lines.
+    # We will use a sliding window over the lines to find: 
+    # [Name] -> [Qty/Unit] -> [Price] -> [Total]
+    
+    lines = [L.strip() for L in text.splitlines() if len(L.strip()) > 1]
+    
+    # Common units to identify a quantity row
+    UNIT_WORDS = {"kg", "gm", "g", "ltr", "l", "pc", "pcs", "nos", "unit", "pkt", "box", "bag", "mtr", "m", "drum"}
+    
+    i = 0
+    while i < len(lines) - 2:
+        # Potential item name: not entirely numeric, not a keyword
+        name_cand = lines[i]
+        skip_words = ["invoice", "bill", "date", "total", "grand", "amount", "sr", "no", "cgst", "sgst", "hsn", "qty", "rate", "discount"]
+        is_skip = any(name_cand.lower().startswith(w) for w in skip_words)
+        
+        # Check if it looks like a hash/part number (e.g., M4510)
+        # Or just a regular title
+        if is_skip or len(name_cand) < 3 or re.match(r'^[\d.,%]+$', name_cand):
+            i += 1
             continue
-
-        if re.search(r"^(invoice|bill|date|total|grand|amount|sr\.?\s*no|#|sl)", line, re.I):
-            continue
-
-        match = LINE_ITEM_PATTERN.search(line) or SIMPLE_LINE_PATTERN.search(line)
-        if not match:
-            continue
-
-        try:
-            name = _clean_name(match.group("name"))
-            if not name or name.lower() in seen_names:
-                continue
-            seen_names.add(name.lower())
-
-            qty   = float(match.group("qty"))
-            price = float(match.group("price"))
-
-            if qty <= 0 or price <= 0 or qty > 10000 or price > 1_000_000:
-                continue
-
-            gst_rate_val = global_gst
-            gst_amt_raw  = None
-
-            if "gst_rate" in match.groupdict() and match.group("gst_rate"):
-                gst_rate_val = float(match.group("gst_rate"))
-            if "gst_amt" in match.groupdict():
-                gst_amt_raw = match.group("gst_amt")
-
-            gst_amt   = _compute_gst(price, qty, gst_rate_val, gst_amt_raw)
-            line_total = round(qty * price + gst_amt, 2)
-
-            items.append(ParsedItem(
-                raw_name=name,
-                quantity=qty,
-                unit_price=price,
-                gst_rate=gst_rate_val,
-                gst_amount=gst_amt,
-                total_amount=line_total,
-            ))
-            logger.debug(f"Parsed item: {name} qty={qty} price={price} gst={gst_rate_val}%")
-
-        except (ValueError, IndexError) as e:
-            logger.debug(f"Skipped line (parse error): {line!r} — {e}")
-            continue
+            
+        # The next few lines should contain numbers (qty, price)
+        # Let's search ahead up to 7 lines for qty, unit, price, total
+        window = lines[i+1 : i+8]
+        
+        qty = 0.0
+        price = 0.0
+        total = 0.0
+        
+        nums_found = []
+        for w in window:
+            # Check if it's a pure number or "Number Unit"
+            w_clean = w.lower().replace(",", "")
+            
+            # Simple number
+            if re.match(r'^\d+(\.\d+)?$', w_clean):
+                nums_found.append(float(w_clean))
+            # Number with unit
+            else:
+                parts = w_clean.split()
+                if len(parts) >= 1 and re.match(r'^\d+(\.\d+)?$', parts[0]):
+                    nums_found.append(float(parts[0]))
+                    
+        if len(nums_found) >= 2:
+            # Assumption: First number is qty, second/third are price/total
+            qty = nums_found[0]
+            
+            # Sometimes HSN code is parsed as the first number.
+            # E.g. 3209 (HSN), 10 (Qty), 3100.00 (Price)
+            if qty > 1000 and len(nums_found) >= 3:
+                qty = nums_found[1]
+                price = nums_found[2]
+            else:
+                price = nums_found[1]
+            
+            if qty > 0 and price > 0 and qty < 10000 and price < 1000000:
+                name = _clean_name(name_cand)
+                
+                if name.lower() not in seen_names:
+                    seen_names.add(name.lower())
+                    gst_amt = _compute_gst(price, qty, global_gst, None)
+                    items.append(ParsedItem(
+                        raw_name=name,
+                        quantity=qty,
+                        unit_price=price,
+                        gst_rate=global_gst,
+                        gst_amount=gst_amt,
+                        total_amount=round(qty * price + gst_amt, 2),
+                    ))
+                    logger.debug(f"Parsed item (Window): {name} qty={qty} price={price}")
+                    
+                i += len(nums_found) # jump ahead to avoid overlapping products
+            
+        i += 1
 
     return items
 
@@ -207,6 +236,8 @@ def _parse_line_items(text: str) -> List[ParsedItem]:
 class InvoiceParserTool:
     """
     Converts raw OCR text into a structured ParsedInvoice object.
+    Uses Groq LLM for accurate spatial reconstruction of PaddleOCR text,
+    falling back to regex/heuristics if no API key is present.
     """
 
     name: str = "invoice_parser"
@@ -215,7 +246,7 @@ class InvoiceParserTool:
         "line items with product name, quantity, unit price, GST, and totals."
     )
 
-    def run(self, ocr_text: str) -> ParsedInvoice:
+    async def run(self, ocr_text: str) -> ParsedInvoice:
         if not ocr_text or not ocr_text.strip():
             logger.warning("Invoice parser received empty OCR text")
             return ParsedInvoice(
@@ -224,7 +255,110 @@ class InvoiceParserTool:
             )
 
         logger.info(f"Invoice parser processing {len(ocr_text)} characters of OCR text")
+        
+        from app.core.config import settings
+        if settings.GROQ_API_KEY:
+            try:
+                import json
+                from groq import AsyncGroq
+                client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+                
+                prompt = f"""
+You are an expert AI parser for Indian supplier receipts.
+You are given the raw OCR text string from PaddleOCR. PaddleOCR sometimes extracts text column-by-column rather than line-by-line, meaning the name, quantity, and price might be physically separated by many newlines.
 
+Your task is to precisely reconstruct the parsed line items and header information.
+
+OCR Text:
+"{ocr_text}"
+
+Rules:
+1. Reconstruct each line item with `raw_name`, `quantity`, `unit_price`, and optionally `gst_rate` (as a number, e.g. 9 or 18) and `gst_amount`, `total_amount`.
+2. Ignore header noise, phone numbers, addresses, and standalone numbers.
+3. Try to calculate `total_amount = (quantity * unit_price) + gst_amount` if not explicitly found.
+4. Extract `supplier_name`, `invoice_number`, `invoice_date` (DD/MM/YYYY or similar string).
+5. Extract the global `total_amount` and `total_gst` for the entire invoice.
+6. Return purely valid JSON matching this structure exactly (do not add any markdown formatting or tags):
+
+{{
+  "supplier_name": "string or null",
+  "invoice_number": "string or null",
+  "invoice_date": "string or null",
+  "total_amount": 0.0,
+  "total_gst": 0.0,
+  "items": [
+    {{
+      "raw_name": "string",
+      "quantity": 0.0,
+      "unit_price": 0.0,
+      "gst_rate": 0.0,
+      "gst_amount": 0.0,
+      "total_amount": 0.0
+    }}
+  ]
+}}
+"""
+                chat_completion = await client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.1,
+                    response_format={"type": "json_object"}
+                )
+                
+                res = json.loads(chat_completion.choices[0].message.content)
+                logger.info("Groq successfully parsed invoice text")
+                
+                items = []
+                for itm in res.get("items", []):
+                    items.append(ParsedItem(
+                        raw_name=str(itm.get("raw_name", "Unknown")),
+                        quantity=float(itm.get("quantity") or 0.0),
+                        unit_price=float(itm.get("unit_price") or 0.0),
+                        gst_rate=float(itm.get("gst_rate") or 0.0),
+                        gst_amount=float(itm.get("gst_amount") or 0.0),
+                        total_amount=float(itm.get("total_amount") or 0.0)
+                    ))
+                
+                parsed_inv = ParsedInvoice(
+                    supplier_name=res.get("supplier_name"),
+                    invoice_number=res.get("invoice_number"),
+                    invoice_date=res.get("invoice_date"),
+                    total_amount=float(res.get("total_amount") or 0.0),
+                    total_gst=float(res.get("total_gst") or 0.0),
+                    items=items
+                )
+                
+            except Exception as e:
+                logger.error(f"Groq API parsing failed, falling back to heuristic: {e}")
+                parsed_inv = self._fallback_parse(ocr_text)
+        else:
+            parsed_inv = self._fallback_parse(ocr_text)
+
+        # ── Normalize: clean product names & canonicalise units ──
+        return await self.normalize_parsed_invoice(parsed_inv)
+
+    async def normalize_parsed_invoice(self, inv: ParsedInvoice) -> ParsedInvoice:
+        """Shared normalization logic for both Fast and Slow extraction paths."""
+        try:
+            dict_data = {"receipt_items": [i.to_dict() for i in inv.items]}
+            norm_res = normalize_receipt(dict_data)
+
+            norm_items = []
+            for item_dict in norm_res.get("receipt_items", []):
+                norm_items.append(ParsedItem(
+                    raw_name=item_dict.get("raw_name"),
+                    quantity=item_dict.get("quantity"),
+                    unit_price=item_dict.get("unit_price"),
+                    gst_rate=item_dict.get("gst_rate"),
+                    gst_amount=item_dict.get("gst_amount"),
+                    total_amount=item_dict.get("total_amount"),
+                ))
+            inv.items = norm_items
+        except Exception as e:
+            logger.error(f"Failed to normalize invoice items: {e}")
+        return inv
+
+    def _fallback_parse(self, ocr_text: str) -> ParsedInvoice:
         header = _extract_header(ocr_text)
         items  = _parse_line_items(ocr_text)
 
@@ -239,20 +373,15 @@ class InvoiceParserTool:
                     f"Total mismatch: parsed={total_amount:.2f} "
                     f"vs OCR total={parsed_total:.2f}"
                 )
-
-        logger.info(
-            f"Parsed {len(items)} line items | "
-            f"total={total_amount:.2f} | gst={total_gst:.2f}"
-        )
-
+                
         return ParsedInvoice(
-            supplier_name=header["supplier_name"],
-            invoice_number=header["invoice_number"],
-            invoice_date=header["invoice_date"],
-            items=items,
-            total_amount=round(total_amount, 2),
-            total_gst=round(total_gst, 2),
+            supplier_name=header.get("supplier_name"),
+            invoice_number=header.get("invoice_number"),
+            invoice_date=header.get("invoice_date"),
+            total_amount=total_amount,
+            total_gst=total_gst,
+            items=items
         )
 
-
+# Instantiate the singleton tool
 invoice_parser = InvoiceParserTool()

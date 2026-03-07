@@ -15,9 +15,9 @@ from loguru import logger
 from app.core.config import settings
 from app.db.database import get_db
 from app.models.models import Invoice, InvoiceItem
-from app.schemas.schemas import InvoiceOut, InvoiceItemOut, InvoiceProcessResponse
+from app.schemas.schemas import InvoiceOut, InvoiceItemOut, InvoiceProcessResponse, InvoiceConfirmRequest
 from app.services.invoice_service import (
-    process_invoice_file, get_invoice, get_all_invoices
+    process_invoice_file, get_invoice, get_all_invoices, confirm_invoice_items
 )
 
 router = APIRouter(prefix="/api/invoices", tags=["Invoices"])
@@ -87,3 +87,33 @@ async def get_invoice_detail(invoice_id: int, db: AsyncSession = Depends(get_db)
     if not invoice:
         raise HTTPException(status_code=404, detail=f"Invoice #{invoice_id} not found")
     return invoice
+
+@router.post("/{invoice_id}/confirm", response_model=InvoiceProcessResponse, status_code=status.HTTP_200_OK)
+async def confirm_invoice(
+    invoice_id: int,
+    request: InvoiceConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Applies overrides from the frontend (quantity, unit_price, profit_percentage),
+    updates the database, and increments inventory.
+    """
+    try:
+        overrides = request.overrides if request else None
+        return await confirm_invoice_items(db, invoice_id, overrides)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error confirming invoice {invoice_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+@router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_invoice(invoice_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete an invoice and all its line items."""
+    invoice = await get_invoice(db, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail=f"Invoice #{invoice_id} not found")
+    
+    # Cascade delete is handled by SQLAlchemy relationship
+    await db.delete(invoice)
+    await db.commit()
+    return None

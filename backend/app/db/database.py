@@ -13,7 +13,7 @@ from app.core.config import settings
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,          # set True to log all SQL in dev
-    connect_args={"check_same_thread": False},  # SQLite-specific
+    connect_args={"check_same_thread": False, "timeout": 30},  # SQLite-specific
 )
 
 

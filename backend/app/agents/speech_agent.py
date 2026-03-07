@@ -241,7 +241,16 @@ class SpeechAgent:
                     logger.debug(f"[SpeechAgent] Groq transcript received ({len(raw_text)} chars)")
 
                     if not raw_text:
-                        raise ValueError("Empty audio transcription.")
+                        logger.info("[SpeechAgent] Audio transcription is empty (likely silence).")
+                        resolved_lang = target_language or "en"
+                        return SpeechResult(
+                            native_transcript="",
+                            english_transcript="",
+                            detected_language=resolved_lang,
+                            language_name=SUPPORTED_LANGUAGES.get(resolved_lang, "English"),
+                            language_probability=1.0,
+                            recording_prompt=RECORDING_PROMPTS.get(resolved_lang, RECORDING_PROMPTS["en"]),
+                        )
 
                     # Step 2: Intelligent translation and cleaning via LLaMA 70B
                     translation_prompt = f"""
@@ -283,14 +292,16 @@ CRITICAL: The 'english_translation' field MUST be a plain natural language text 
                     
                     logger.info(f"[SpeechAgent] LLaMA translation completed (lang={resolved_lang}, chars={len(final_english)})")
                     
-                    # Check for explicit errors
+                    # Check for empty or NULL translations
                     if final_english.upper() == "NULL" or not final_english:
-                        raise ValueError("LLM returned empty or NULL translation.")
-
-                    # The LLM sometimes hallucinates a dict instead of string if it thinks it's extracting items.
-                    # Also, the LLM might not return native_text if it's just translating.
-                    # For now, we'll use the raw_text as native_text if the LLM doesn't provide it.
-                    final_native = out_js.get("native_text", raw_text).strip()
+                        logger.info(f"[SpeechAgent] LLM returned empty or NULL translation for raw text: {raw_text!r}")
+                        final_english = ""
+                        final_native = ""
+                    else:
+                        # The LLM sometimes hallucinates a dict instead of string if it thinks it's extracting items.
+                        # Also, the LLM might not return native_text if it's just translating.
+                        # For now, we'll use the raw_text as native_text if the LLM doesn't provide it.
+                        final_native = out_js.get("native_text", raw_text).strip()
 
                     if isinstance(final_native, dict):
                         final_native = json.dumps(final_native)

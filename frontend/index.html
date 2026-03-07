@@ -300,6 +300,35 @@
             Upload &amp; Process Invoice
           </button>
           <div id="inv-result" class="result-box" style="display:none"></div>
+
+          <!-- Interactive Confirmation UI -->
+          <div id="inv-confirm-section" style="display:none; margin-top: 15px;">
+            <div class="table-wrap">
+              <table id="inv-confirm-table">
+                <thead>
+                  <tr>
+                    <th>Item Name</th>
+                    <th>Matched Product</th>
+                    <th width="80">Qty (Stock+⬇️)</th>
+                    <th width="100">Cost (₹)</th>
+                    <th width="80">Profit %</th>
+                    <th width="100">Sale (₹)</th>
+                    <th width="50">Drop</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+              <button class="btn btn-success btn-full" id="inv-confirm-btn" onclick="submitInvoiceConfirmation()">
+                ✅ Verify & Update Inventory
+              </button>
+              <button class="btn btn-ghost" style="color: var(--red); border-color: var(--red);"
+                onclick="cancelInvoice()">
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
         <div class="card">
           <div class="card-header">
@@ -407,7 +436,7 @@
   </main>
 
   <div id="toast-container"></div>
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=3"></script>
 </body>
 
 </html>

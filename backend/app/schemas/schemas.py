@@ -94,13 +94,34 @@ class InvoiceOut(OrmBase):
     items:          List[InvoiceItemOut] = []
 
 
+class InvoiceConfirmOverride(BaseModel):
+    id: int
+    quantity: float
+    unit_price: float
+    profit_percentage: float = 20.0
+    deleted: bool = False
+
+class InvoiceConfirmRequest(BaseModel):
+    overrides: Optional[List[InvoiceConfirmOverride]] = None
+
+
+class ParsedItemDetail(OrmBase):
+    id: Optional[int] = None
+    raw_name: str
+    inferred_name: Optional[str] = None
+    quantity: float
+    unit_price: float
+    total_amount: float
+
+
 class InvoiceProcessResponse(BaseModel):
     invoice_id:   int
     status:       str
     message:      str
-    items_parsed: int
-    total_amount: float
-    total_gst:    float
+    items_parsed: int = 0
+    total_amount: float = 0.0
+    total_gst:    float = 0.0
+    parsed_item_details: List[ParsedItemDetail] = []
 
 
 # ════════════════════════════════════════════════════════════
@@ -160,19 +181,12 @@ class CreditTransactionOut(OrmBase):
     created_at: Optional[datetime]
 
 
-class ParsedItemDetail(BaseModel):
-    id: Optional[int] = None
-    raw_name: str
-    inferred_name: Optional[str] = None
-    quantity: float
-    unit_price: float
-    total_amount: float
-
 class ConfirmItemOverride(BaseModel):
     id: int
     quantity: float
     unit_price: float
     deleted: bool = False
+
 
 class ConfirmSaleRequest(BaseModel):
     overrides: Optional[List[ConfirmItemOverride]] = None
@@ -242,32 +256,35 @@ class SupportedLanguagesResponse(BaseModel):
 class ProfitSummary(BaseModel):
     product_id:     int
     product_name:   str
-    total_sold_qty: float
+    units_sold:     float
     total_revenue:  float
-    total_cost:     float
+    total_cogs:     float
     gross_profit:   float
     margin_pct:     float
+    unit:           str
 
 
 class DemandForecast(BaseModel):
     product_id:          int
     product_name:        str
-    avg_daily_demand:    float
+    avg_daily_sales:     float
     forecast_7d:         float
     forecast_30d:        float
     current_stock:       float
     stockout_risk:       bool
     days_until_stockout: Optional[float]
+    unit:                str
 
 
 class RestockRecommendation(BaseModel):
-    product_id:      int
-    product_name:    str
-    current_stock:   float
-    reorder_point:   float
-    recommended_qty: float
-    urgency:         str    # critical | soon | ok
-    reason:          str
+    product_id:       int
+    product_name:     str
+    current_stock:    float
+    reorder_point:    float
+    reorder_quantity: float
+    urgency:          str    # critical | soon | ok
+    reason:           str
+    unit:             str
 
 
 class GSTBreakdownItem(BaseModel):
@@ -276,10 +293,14 @@ class GSTBreakdownItem(BaseModel):
 
 
 class GSTSummary(BaseModel):
-    month:           str     # "YYYY-MM"
-    total_purchases: float
-    total_gst_paid:  float
-    invoice_count:   int
+    year:            int
+    month:           int
+    taxable_amount:  float
+    cgst:            float
+    sgst:            float
+    igst:            float
+    total_gst:       float
+    item_count:      int
     breakdown:       List[Dict[str, Any]] = []
 
 

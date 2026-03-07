@@ -558,18 +558,26 @@ function handleInvFile(input) {
   }
 }
 
+let currentPendingInvoiceId = null;
+
 async function runInvoiceUpload() {
   if (!invFile) return;
   const btn = document.getElementById('inv-btn');
   const res = document.getElementById('inv-result');
+  const confirmSection = document.getElementById('inv-confirm-section');
+  const tbody = document.querySelector('#inv-confirm-table tbody');
+
   setBtnLoading(btn, true, 'Processing OCR…');
   setResult(res, '');
+  confirmSection.style.display = 'none';
 
   try {
     const fd = new FormData();
     fd.append('file', invFile);
     const data = await apiPost('/api/invoices/upload', fd, true);
-    const cls = data.status === 'processed' ? 'success' : 'error';
+
+    // Always show summary
+    const cls = data.status === 'processed' ? 'success' : (data.status === 'pending_confirmation' ? 'info' : 'error');
     setResult(res, `
       <div class="result-row"><span class="result-label">Status</span><span class="result-val"><span class="badge badge-${data.status}">${data.status}</span></span></div>
       <div class="result-row"><span class="result-label">Invoice ID</span><span class="result-val">#${data.invoice_id}</span></div>
@@ -578,12 +586,109 @@ async function runInvoiceUpload() {
       <div class="result-row"><span class="result-label">Total GST</span><span class="result-val">₹${fNum(data.total_gst)}</span></div>
       <div class="result-row"><span class="result-label">Message</span><span class="result-val td-muted">${escHtml(data.message || '')}</span></div>
     `, cls);
-    if (data.status === 'processed') toast(`Invoice #${data.invoice_id} processed!`, 'success');
-    loadInvoices();
+
+    if (data.status === 'processed') {
+      toast(`Invoice #${data.invoice_id} processed!`, 'success');
+      loadInvoices();
+    } else if (data.status === 'pending_confirmation') {
+      toast(`Invoice parsed! Please review the ${data.items_parsed} items.`, 'info');
+      currentPendingInvoiceId = data.invoice_id;
+
+      // Render interactive table
+      tbody.innerHTML = '';
+      (data.parsed_item_details || []).forEach((itm, idx) => {
+        const tr = document.createElement('tr');
+        tr.dataset.itemId = itm.id || idx;
+        tr.innerHTML = `
+          <td><strong>${escHtml(itm.raw_name)}</strong></td>
+          <td>${itm.inferred_name ? `<span style="color:var(--primary); font-weight:600;">${escHtml(itm.inferred_name)}</span>` : '<span style="color:var(--red);">New Item</span>'}</td>
+          <td><input type="number" class="input p-qty" value="${itm.quantity}" min="0" step="0.01" style="width:70px; padding:4px;" ${!itm.quantity ? 'style="border-color:var(--red)"' : ''} /></td>
+          <td><input type="number" class="input p-cost" value="${itm.unit_price.toFixed(2)}" min="0" step="0.01" style="width:90px; padding:4px;" ${!itm.unit_price ? 'style="border-color:var(--red)"' : ''} /></td>
+          <td><input type="number" class="input p-profit" value="20" min="0" max="999" step="1" style="width:70px; padding:4px;" /></td>
+          <td><input type="number" class="input p-sale" value="${(itm.unit_price * 1.2).toFixed(2)}" readonly style="width:90px; padding:4px; background:var(--bg-card);" /></td>
+          <td><button class="btn btn-ghost btn-danger" style="padding:4px;" onclick="dropInvoiceItem(this)">❌</button></td>
+        `;
+
+        // Attach recalculate logic
+        const costI = tr.querySelector('.p-cost');
+        const profI = tr.querySelector('.p-profit');
+        const saleI = tr.querySelector('.p-sale');
+        const recalc = () => {
+          const c = parseFloat(costI.value) || 0;
+          const p = parseFloat(profI.value) || 0;
+          saleI.value = (c * (1 + p / 100)).toFixed(2);
+        };
+        costI.addEventListener('input', recalc);
+        profI.addEventListener('input', recalc);
+
+        tbody.appendChild(tr);
+      });
+
+      confirmSection.style.display = 'block';
+    }
+
   } catch (e) {
     setResult(res, errMsg(e), 'error');
   } finally {
-    setBtnLoading(btn, false, '▲ Upload & Process Invoice');
+    setBtnLoading(btn, false, '▲ Upload Invoice (Wait ~30s)');
+  }
+}
+
+async function submitInvoiceConfirmation() {
+  if (!currentPendingInvoiceId) return;
+  const btn = document.getElementById('inv-confirm-btn');
+  const tbody = document.querySelector('#inv-confirm-table tbody');
+  const res = document.getElementById('inv-result');
+  const confirmSection = document.getElementById('inv-confirm-section');
+
+  const overrides = [];
+  let hasMissing = false;
+
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const isDeleted = tr.classList.contains('deleted');
+    const id = parseInt(tr.dataset.itemId, 10);
+    const q = parseFloat(tr.querySelector('.p-qty').value) || 0;
+    const c = parseFloat(tr.querySelector('.p-cost').value) || 0;
+    const p = parseFloat(tr.querySelector('.p-profit').value) || 0;
+
+    if (!isDeleted && (q <= 0 || c <= 0)) hasMissing = true;
+
+    overrides.push({
+      id: id,
+      quantity: q,
+      unit_price: c,
+      profit_percentage: p,
+      deleted: isDeleted
+    });
+  });
+
+  if (hasMissing) {
+    toast("Please fill in missing quantities or cost prices (or drop the item)", "error");
+    return;
+  }
+
+  setBtnLoading(btn, true, 'Updating Inventory…');
+  try {
+    const data = await apiPost(`/api/invoices/${currentPendingInvoiceId}/confirm`, { overrides: overrides });
+
+    confirmSection.style.display = 'none';
+    setResult(res, `
+      <div class="result-row"><span class="result-label">Status</span><span class="result-val"><span class="badge badge-success">Processed</span></span></div>
+      <div class="result-row"><span class="result-label">Items Committed</span><span class="result-val">${data.items_parsed}</span></div>
+      <div class="result-row"><span class="result-label">Message</span><span class="result-val">${escHtml(data.message)}</span></div>
+    `, 'success');
+
+    toast("Inventory successfully updated!", "success");
+    currentPendingInvoiceId = null;
+    document.getElementById('inv-zone').classList.remove('has-file');
+    invFile = null;
+    document.getElementById('inv-file-name').style.display = 'none';
+    loadInvoices();
+    loadInventory();
+  } catch (e) {
+    toast(errMsg(e), 'error');
+  } finally {
+    setBtnLoading(btn, false, '✅ Verify & Update Inventory');
   }
 }
 
@@ -867,7 +972,8 @@ async function apiFetch(path, method = 'GET') {
 async function apiPost(path, body, isFormData = false) {
   const headers = isFormData ? {} : { 'Content-Type': 'application/json' };
   headers['X-API-Key'] = API_KEY;
-  const r = await fetch(API + path, { method: 'POST', headers, body });
+  const fetchBody = isFormData ? body : (typeof body === 'string' ? body : JSON.stringify(body));
+  const r = await fetch(API + path, { method: 'POST', headers, body: fetchBody });
   if (!r.ok) {
     let detail = `HTTP ${r.status}`;
     try { const j = await r.json(); detail = j.detail || JSON.stringify(j); } catch { }
@@ -924,3 +1030,50 @@ function errMsg(e) {
 checkHealth();
 setInterval(checkHealth, 15000);
 loadDashboard();
+
+async function cancelInvoice() {
+  if (currentPendingInvoiceId) {
+    try {
+      await fetch(`${API}/api/invoices/${currentPendingInvoiceId}`, {
+        method: 'DELETE',
+        headers: { 'X-API-Key': API_KEY }
+      });
+    } catch (e) {
+      console.error("Failed to delete invoice:", e);
+    }
+  }
+
+  currentPendingInvoiceId = null;
+  invFile = null;
+
+  const fileInput = document.getElementById('inv-file');
+  if (fileInput) fileInput.value = '';
+
+  const fileNameTag = document.getElementById('inv-file-name');
+  if (fileNameTag) fileNameTag.style.display = 'none';
+
+  const zone = document.getElementById('inv-zone');
+  if (zone) zone.classList.remove('has-file');
+
+  const result = document.getElementById('inv-result');
+  if (result) result.style.display = 'none';
+
+  const confirmSection = document.getElementById('inv-confirm-section');
+  if (confirmSection) confirmSection.style.display = 'none';
+
+  const uploadBtn = document.getElementById('inv-btn');
+  if (uploadBtn) uploadBtn.disabled = true;
+
+  toast('Invoice cancelled and removed.', 'info');
+  loadInvoices();
+}
+
+function dropInvoiceItem(btn) {
+  const tr = btn.closest('tr');
+  if (!tr) return;
+  tr.classList.toggle('deleted');
+  const isDeleted = tr.classList.contains('deleted');
+  btn.textContent = isDeleted ? '♻️' : '❌';
+  toast(isDeleted ? 'Item dropped — will be skipped on confirm' : 'Item restored', 'info');
+}
+

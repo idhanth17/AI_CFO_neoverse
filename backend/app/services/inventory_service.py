@@ -38,6 +38,7 @@ async def find_or_create_product(
     name: str,
     cost_price: float = 0.0,
     gst_rate: float = 0.0,
+    custom_profit_margin: float = 20.0,
 ) -> Tuple[Product, bool]:
     """
     Finds an existing product or creates a new one.
@@ -50,7 +51,7 @@ async def find_or_create_product(
     product = Product(
         name=name.strip(),
         cost_price=cost_price,
-        selling_price=round(cost_price * 1.2, 2),  # default 20% markup
+        selling_price=round(cost_price * (1 + custom_profit_margin / 100), 2),
         gst_rate=gst_rate,
         current_stock=0.0,
         reorder_point=5.0,
@@ -66,6 +67,7 @@ async def find_or_create_product(
 async def apply_purchase(
     db: AsyncSession,
     invoice_item: InvoiceItem,
+    custom_profit_margin: float = 20.0,
 ) -> Product:
     """
     Apply a purchase (supplier invoice item) to inventory.
@@ -76,6 +78,7 @@ async def apply_purchase(
         name=invoice_item.raw_name,
         cost_price=invoice_item.unit_price,
         gst_rate=invoice_item.gst_rate,
+        custom_profit_margin=custom_profit_margin,
     )
 
     invoice_item.product_id = product.id
@@ -84,6 +87,10 @@ async def apply_purchase(
     product.current_stock = round(product.current_stock + invoice_item.quantity, 3)
     product.cost_price     = invoice_item.unit_price
     product.gst_rate       = invoice_item.gst_rate
+    
+    # Update selling price based on the selected profit margin
+    if invoice_item.unit_price > 0:
+        product.selling_price = round(invoice_item.unit_price * (1 + custom_profit_margin / 100), 2)
 
     logger.info(
         f"Purchase applied: {product.name} | "

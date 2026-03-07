@@ -1,3 +1,4 @@
+[32m2026-03-08 02:19:45.321[0m | [31m[1mERROR   [0m | [36mapp.agents.speech_agent[0m:[36mtranscribe_file[0m:[36m313[0m - [31m[1m[SpeechAgent] Groq API failed, falling back to local Whisper: LLM returned empty or NULL translation.[0m
 
 ============================================================
 SECTION 1 - Configuration & Environment
@@ -64,20 +65,20 @@ SECTION 4 - Speech Agent (Multilingual)
 SECTION 5 - Sales Parser (Existing Feature)
 ============================================================
   [PASS]  Parser: 'sold 2 kg rice and 5 soaps' -> 2 item(s)
-         Got 2: ['Rice', 'Soaps']
+         Got 2: ['rice', 'soaps']
   [PASS]  Parser: '2 packets biscuits, 1 litre oil' -> 2 item(s)
-         Got 2: ['Biscuits', 'Oil']
+         Got 2: ['biscuits', 'oil']
   [PASS]  Parser: 'rice 2 kg, oil 1 litre, sugar 500 gm' -> 3 item(s)
-         Got 3: ['Kg', 'Litre', 'Gm']
+         Got 3: ['rice', 'oil', 'sugar']
   [PASS]  Parser: 'gave 3 soaps and 1 kg sugar to customer' -> 2 item(s)
-         Got 2: ['Soaps', 'Sugar To Customer']
+         Got 2: ['soap', 'sugar']
   [PASS]  Parser: 'sold ten pens' -> 1 item(s)
-         Got 1: ['Pens']
+         Got 1: ['pens']
 
 ============================================================
 SECTION 6 - Sales Service (Text Pipeline)
 ============================================================
-  [FAIL]  Text sale: status=processed
+  [PASS]  Text sale: status=pending_confirmation
          Preview: Sale ready to be confirmed.
   [PASS]  Text sale: items_parsed >= 1
          1
@@ -89,91 +90,67 @@ SECTION 6 - Sales Service (Text Pipeline)
 ============================================================
 SECTION 7 - Voice Sale (Synthetic WAV / Whisper)
 ============================================================
+  0%|          | 0/200 [00:00<?, ?frames/s]100%|##########| 200/200 [00:04<00:00, 40.84frames/s]100%|##########| 200/200 [00:04<00:00, 40.84frames/s]
+[32m2026-03-08 02:20:00.347[0m | [31m[1mERROR   [0m | [36mapp.services.sales_service[0m:[36mprocess_voice_sale[0m:[36m80[0m - [31m[1mVoice sale #137 failed: Could not extract any sale items from the transcript. Try speaking: 'Sold 2 kg rice and 5 soaps' (in any supported language).[0m
+Traceback (most recent call last):
+  File "tests/test_all.py", line 463, in <module>
+    from app.main import app
+  File ".\app\main.py", line 20, in <module>
+    from app.api.routes import invoices, sales, inventory, analytics, speech
+  File ".\app\api\routes\invoices.py", line 19, in <module>
+    from app.services.invoice_service import (
+  File ".\app\services\invoice_service.py", line 20, in <module>
+    from app.agents.ocr_agent import ocr_agent
+  File ".\app\agents\ocr_agent.py", line 15, in <module>
+    from paddleocr import PaddleOCR
+  File "C:\Python38\lib\site-packages\paddleocr\__init__.py", line 17, in <module>
+    from ._models import (
+  File "C:\Python38\lib\site-packages\paddleocr\_models\__init__.py", line 15, in <module>
+    from .chart_parsing import ChartParsing
+  File "C:\Python38\lib\site-packages\paddleocr\_models\chart_parsing.py", line 16, in <module>
+    from ._doc_vlm import (
+  File "C:\Python38\lib\site-packages\paddleocr\_models\_doc_vlm.py", line 21, in <module>
+    from .base import PaddleXPredictorWrapper, PredictorCLISubcommandExecutor
+  File "C:\Python38\lib\site-packages\paddleocr\_models\base.py", line 17, in <module>
+    from paddlex import create_predictor
+  File "C:\Users\sampa\AppData\Roaming\Python\Python38\site-packages\paddlex\__init__.py", line 41, in <module>
+    _initialize()
+  File "C:\Users\sampa\AppData\Roaming\Python\Python38\site-packages\paddlex\__init__.py", line 38, in _initialize
+    repo_manager.initialize()
+  File "C:\Users\sampa\AppData\Roaming\Python\Python38\site-packages\paddlex\repo_manager\core.py", line 214, in initialize
+    raise RuntimeError(
+RuntimeError: PDX has already been initialized. Reinitialization is not supported.
   [PASS]  Voice sale: sale_id assigned
-         38
-  [PASS]  Voice sale: status is processed or failed
+         137
+  [PASS]  Voice sale: status is pending_confirmation, needs_action or failed
          failed
   [PASS]  Voice sale: detected_language is a supported ISO code
          en
   [PASS]  Voice sale: language_probability is float
-         1.0
+         0.5541
   [PASS]  Voice sale: english_transcript is str
   [PASS]  Voice sale: recording_prompt non-empty
 
 ============================================================
 SECTION 8 - FastAPI Route Registration
 ============================================================
-  [PASS]  Route registered: POST /api/sales/voice
-  [PASS]  Route registered: POST /api/sales/text
-  [PASS]  Route registered: GET /api/sales/
-  [PASS]  Route registered: GET /api/sales/{sale_id}
-  [PASS]  Route registered: POST /api/invoices/upload
-  [PASS]  Route registered: GET /api/invoices/
-  [PASS]  Route registered: GET /api/inventory/
-  [PASS]  Route registered: POST /api/inventory/
-  [PASS]  Route registered: GET /api/analytics/dashboard
-  [PASS]  Route registered: GET /api/speech/languages
-  [PASS]  Route registered: POST /api/speech/detect
-  [PASS]  Route registered: GET /health
+  [FAIL]  Route registration
+         'type' object is not subscriptable
 
 ============================================================
 SECTION 9 - HTTP Integration Tests (TestClient)
 ============================================================
-  [PASS]  GET /health -> 200
-  [PASS]  GET / -> 200
-  [PASS]  GET /api/inventory/ -> 200
-  [PASS]  GET /api/sales/ -> 200
-  [PASS]  GET /api/invoices/ -> 200
-  [PASS]  GET /api/speech/languages -> 200
-  [PASS]    response has 'languages' key
-  [PASS]    response has 'recording_prompts' key
-  [PASS]    All 5 language codes present
-  [PASS]  POST /api/sales/text (English) -> 2xx
-         201
-  [PASS]    /api/sales/text response has 'english_transcript'
-  [PASS]    /api/sales/text response has 'detected_language'
-  [PASS]    /api/sales/text response has 'language_name'
-  [PASS]    /api/sales/text response has 'recording_prompt'
-  [PASS]  POST /api/sales/text (language hint) -> 2xx
-         201
-  [PASS]  POST /api/speech/detect (WAV) -> 200 or 500
-         200
-  [PASS]    /api/speech/detect response has 'detected_language'
-  [PASS]    /api/speech/detect response has 'language_name'
-  [PASS]    /api/speech/detect response has 'language_probability'
-  [PASS]    /api/speech/detect response has 'native_transcript'
-  [PASS]    /api/speech/detect response has 'english_transcript'
-  [PASS]    /api/speech/detect response has 'recording_prompt'
-  [PASS]    detected_language is a supported ISO code
-         en
-  [PASS]  POST /api/speech/detect (txt) -> 415
-         415
-  [PASS]  POST /api/sales/voice (WAV) -> 2xx
-         201
-  [PASS]    /api/sales/voice response has 'sale_id'
-         41
-  [PASS]    /api/sales/voice response has 'status'
-         failed
-  [PASS]    /api/sales/voice response has 'transcript'
-         Translator's note.
-  [PASS]    /api/sales/voice response has 'english_transcript'
-         Translator's note.
-  [PASS]    /api/sales/voice response has 'detected_language'
-         en
-  [PASS]    /api/sales/voice response has 'language_name'
-         English (Auto-translated)
-  [PASS]    /api/sales/voice response has 'language_probability'
-         1.0
-  [PASS]    /api/sales/voice response has 'recording_prompt'
-         Please speak clearly ? describe the items sold today.
+  [FAIL]  Integration tests
+         PDX has already been initialized. Reinitialization is not supported.
 
 ============================================================
 SUMMARY
 ============================================================
-  Total  : 98
-  Passed : 97 [PASS]
-  Failed : 1 [FAIL]
+  Total  : 55
+  Passed : 53 [PASS]
+  Failed : 2 [FAIL]
 
   Failed tests:
-    [FAIL]  Text sale: status=processed
+    [FAIL]  Route registration
+    [FAIL]  Integration tests
 

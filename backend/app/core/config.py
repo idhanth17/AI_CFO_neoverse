@@ -33,10 +33,6 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_MB: int = 20
 
-    # ── OCR ──────────────────────────────────────
-    # Windows default; override in .env if needed
-    TESSERACT_CMD: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
     # ── Whisper ───────────────────────────────────
     WHISPER_MODEL: str = "base"      # tiny | base | small | medium
 

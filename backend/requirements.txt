@@ -20,8 +20,12 @@ python-multipart>=0.0.9          # for file upload (UploadFile)
 # Logging
 loguru>=0.7.2
 
-# OCR
-pytesseract>=0.3.10
+# OCR — PaddleOCR (replaces legacy Tesseract)
+paddleocr>=2.7.0
+# PaddlePaddle CPU build — for GPU support see: https://www.paddlepaddle.org.cn/install
+paddlepaddle>=2.6.0
+
+# Pillow for PDF page image conversion
 Pillow>=10.3.0
 
 # PDF support (optional — requires poppler-utils system package)

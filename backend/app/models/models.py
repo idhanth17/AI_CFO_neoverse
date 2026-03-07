@@ -29,9 +29,10 @@ from app.db.database import Base
 # ────────────────────────────────────────────────────────────
 
 class InvoiceStatus(str, enum.Enum):
-    PENDING   = "pending"
-    PROCESSED = "processed"
-    FAILED    = "failed"
+    PENDING               = "pending"
+    PENDING_CONFIRMATION  = "pending_confirmation"
+    PROCESSED             = "processed"
+    FAILED                = "failed"
 
 
 class SaleStatus(str, enum.Enum):

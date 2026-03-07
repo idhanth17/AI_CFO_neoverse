@@ -41,9 +41,29 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialised — all tables ready")
 
+    # Start OCR Daemon in background
+    import sys
+    import subprocess
+    daemon_path = Path(__file__).parent.parent / "paddle_daemon.py"
+    daemon_process = None
+    if daemon_path.exists():
+        logger.info("Starting PaddleOCR Daemon...")
+        daemon_process = subprocess.Popen(
+            [sys.executable, str(daemon_path)], 
+            stdout=subprocess.DEVNULL, 
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        )
+
     yield
 
     # ── Shutdown ─────────────────────────────
+    if daemon_process:
+        logger.info("Stopping PaddleOCR Daemon...")
+        daemon_process.terminate()
+        try: daemon_process.wait(timeout=5)
+        except: daemon_process.kill()
+
     logger.info("AI CFO Backend shutting down")
 
 
