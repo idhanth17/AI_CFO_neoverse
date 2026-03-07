@@ -72,6 +72,9 @@ class Product(Base):
     invoice_items: Mapped[List["InvoiceItem"]] = relationship(
         "InvoiceItem", back_populates="product", lazy="select"
     )
+    receipt_items: Mapped[List["ReceiptItem"]] = relationship(
+        "ReceiptItem", back_populates="product", lazy="select"
+    )
     sale_items: Mapped[List["SaleItem"]] = relationship(
         "SaleItem", back_populates="product", lazy="select"
     )
@@ -141,6 +144,76 @@ class InvoiceItem(Base):
 
     def __repr__(self) -> str:
         return f"<InvoiceItem id={self.id} name={self.raw_name!r} qty={self.quantity}>"
+
+
+# ────────────────────────────────────────────────────────────
+# Receipt — parsed customer receipt from OCR parser
+# ────────────────────────────────────────────────────────────
+
+class Receipt(Base):
+    __tablename__ = "receipts"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    file_path       = Column(String(500), nullable=True)
+
+    # Parsed header fields from OCR parser.py output
+    vendor_name     = Column(String(200), nullable=True)
+    bill_number     = Column(String(100), nullable=True)
+    receipt_date    = Column(DateTime, nullable=True)
+    receipt_time    = Column(String(50), nullable=True)
+    currency        = Column(String(10), default="INR")
+
+    # Address and contact
+    address         = Column(Text, nullable=True)
+    phone           = Column(String(20), nullable=True)
+
+    # Amounts
+    subtotal        = Column(Float, default=0.0)
+    tax             = Column(Float, default=0.0)
+    discount        = Column(Float, default=0.0)
+    total_amount    = Column(Float, default=0.0)
+
+    # Payment info
+    payment_method  = Column(String(50), nullable=True)
+
+    # Raw content
+    raw_ocr_text    = Column(Text, nullable=True)
+
+    # Meta
+    created_at      = Column(DateTime, default=func.now())
+
+    # Relationships
+    items: Mapped[List["ReceiptItem"]] = relationship(
+        "ReceiptItem", back_populates="receipt", cascade="all, delete-orphan", lazy="select"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Receipt id={self.id} vendor={self.vendor_name!r} total={self.total_amount}>"
+
+
+# ────────────────────────────────────────────────────────────
+# ReceiptItem — one line item from a parsed receipt
+# ────────────────────────────────────────────────────────────
+
+class ReceiptItem(Base):
+    __tablename__ = "receipt_items"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    receipt_id    = Column(Integer, ForeignKey("receipts.id", ondelete="CASCADE"), nullable=False)
+    product_id    = Column(Integer, ForeignKey("products.id"), nullable=True)
+
+    # As parsed from OCR
+    item_name     = Column(String(200), nullable=False)
+    quantity      = Column(Float, nullable=False)
+    unit_price    = Column(Float, nullable=False)
+    total_price   = Column(Float, nullable=False)
+
+    # Relationships
+    receipt: Mapped["Receipt"]      = relationship("Receipt", back_populates="items")
+    product: Mapped[Optional["Product"]] = relationship("Product", back_populates="receipt_items")
+
+    def __repr__(self) -> str:
+        return f"<ReceiptItem id={self.id} name={self.item_name!r} qty={self.quantity}>"
 
 
 # ────────────────────────────────────────────────────────────
