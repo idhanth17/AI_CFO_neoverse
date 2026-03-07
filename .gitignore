@@ -1,10 +1,11 @@
 # ─── Root .gitignore ──────────────────────────────────────────────────────────
 # Covers both the backend/ Python project and the future frontend/ project.
 
-# Python
+# Python Cache
 __pycache__/
 *.py[cod]
-*.pyo
+*$py.class
+*.so
 .Python
 *.egg-info/
 dist/
@@ -22,6 +23,7 @@ ENV/
 
 # Databases (runtime)
 *.db
+receipts.db
 *.sqlite
 *.sqlite3
 
@@ -29,9 +31,12 @@ ENV/
 uploads/
 backend/uploads/
 
-# Logs
+# Logs and Debug Output
 *.log
 logs/
+output.txt
+output_clean.txt
+crash_log.txt
 
 # Node / frontend
 node_modules/
@@ -48,8 +53,13 @@ Thumbs.db
 # Whisper model cache
 .cache/
 
-# Binary test assets
+# Binary assets / OCR Temporary Evaluation
 *.jpg
 *.jpeg
 *.png
 *.pdf
+
+# PaddleOCR outputs
+output/
+inference_results/
+log_output/
