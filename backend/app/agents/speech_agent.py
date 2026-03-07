@@ -222,28 +222,75 @@ class SpeechAgent:
         # Fast Groq Route
         if settings.GROQ_API_KEY:
             try:
+                import json
                 from groq import Groq
                 client = Groq(api_key=settings.GROQ_API_KEY)
                 logger.info("[SpeechAgent] Using lightning-fast Groq API for STT")
                 
                 with open(audio_path, "rb") as file:
-                    # Groq provides direct translation to English
-                    translation = client.audio.translations.create(
+                    # Step 1: Raw transcription precisely as spoken (captures messy colloquialisms)
+                    transcription = client.audio.transcriptions.create(
                         file=(path.name, file.read()),
                         model="whisper-large-v3",
-                        prompt="The shopkeeper is describing today's sales. Translate anything spoken to English."
+                        prompt="Transcribe the colloquial Indian shopkeeper speech exactly as spoken in Tamil, Hindi, Malayalam, Kannada, or English. Contains terms like cement, items, pipes, etc."
                     )
                     
-                english_text = translation.text.strip()
-                logger.info(f"[SpeechAgent] Groq Transcript: {english_text}")
+                raw_text = transcription.text.strip()
+                logger.info(f"[SpeechAgent] Groq Raw Transcript: {raw_text}")
+
+                if not raw_text:
+                    raise ValueError("Empty audio transcription.")
+
+                # Step 2: Intelligent translation and cleaning via LLaMA 70B
+                translation_prompt = f"""
+You are an expert translator specializing in colloquial Indian shopkeeper dialects (Tanglish, Hinglish, Manglish, etc.).
+You are given a raw, messy voice transcript from a hardware/grocery shop.
+Your job is to:
+1. Identify the primary base language spoken (en, ta, hi, ml, kn). Keep it exactly one of these codes.
+2. Clean up the native text transcript by removing filler words, but keep it in its original language formatting.
+3. Translate the items and quantities perfectly into a natural, conversational English sentence. 
+
+Raw Transcript: "{raw_text}"
+
+Respond STRICTLY in JSON format.
+CRITICAL: The 'english_translation' field MUST be a plain natural language text string (like "Sold 5 kg rice to Mark"), NOT a nested JSON object or array.
+
+{{
+  "language": "en|ta|hi|ml|kn",
+  "native_text": "cleaned up native text",
+  "english_translation": "clear english translation string"
+}}
+"""
+                chat_completion = client.chat.completions.create(
+                    messages=[{"role": "user", "content": translation_prompt}],
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.1,
+                    response_format={"type": "json_object"}
+                )
+                
+                res = json.loads(chat_completion.choices[0].message.content)
+                resolved_lang = res.get("language", "en")
+                if resolved_lang not in SUPPORTED_LANGUAGES:
+                    resolved_lang = "en"
+
+                final_native = res.get("native_text", raw_text)
+                final_english = res.get("english_translation", raw_text)
+                
+                # The LLM sometimes hallucinates a dict instead of string if it thinks it's extracting items.
+                if isinstance(final_native, dict):
+                    final_native = json.dumps(final_native)
+                if isinstance(final_english, dict):
+                    final_english = json.dumps(final_english)
+                
+                logger.info(f"[SpeechAgent] LLaMA Translation: {final_english} (Detected: {resolved_lang})")
                 
                 return SpeechResult(
-                    native_transcript    = english_text, # we don't get native text from translate endpoint natively easily, but english is all we need
-                    english_transcript   = english_text,
-                    detected_language    = "en",
-                    language_name        = "English (Auto-translated)",
+                    native_transcript    = final_native,
+                    english_transcript   = final_english,
+                    detected_language    = resolved_lang,
+                    language_name        = SUPPORTED_LANGUAGES[resolved_lang],
                     language_probability = 1.0,
-                    recording_prompt     = RECORDING_PROMPTS["en"],
+                    recording_prompt     = RECORDING_PROMPTS[resolved_lang],
                 )
             except Exception as e:
                 logger.error(f"[SpeechAgent] Groq API failed, falling back to local Whisper: {e}")
