@@ -1077,3 +1077,108 @@ function dropInvoiceItem(btn) {
   toast(isDeleted ? 'Item dropped — will be skipped on confirm' : 'Item restored', 'info');
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHATBOT WIDGET
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let chatbotOpen = false;
+
+function toggleChatbot() {
+  chatbotOpen = !chatbotOpen;
+  const panel = document.getElementById('chatbot-panel');
+  const fab = document.getElementById('chatbot-fab');
+  if (chatbotOpen) {
+    panel.classList.add('open');
+    fab.classList.add('active');
+    document.getElementById('chatbot-input').focus();
+  } else {
+    panel.classList.remove('open');
+    fab.classList.remove('active');
+  }
+}
+
+function chatSuggestion(text) {
+  document.getElementById('chatbot-input').value = text;
+  sendChatMessage();
+  // Hide suggestions after first use
+  const sugg = document.getElementById('chatbot-suggestions');
+  if (sugg) sugg.style.display = 'none';
+}
+
+function addChatMessage(text, sender) {
+  const container = document.getElementById('chatbot-messages');
+  const div = document.createElement('div');
+  div.className = `chat-msg ${sender}`;
+  div.innerHTML = `<div class="chat-bubble">${escHtml(text)}</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+function addChatBubbleHTML(html, sender) {
+  const container = document.getElementById('chatbot-messages');
+  const div = document.createElement('div');
+  div.className = `chat-msg ${sender}`;
+  div.innerHTML = `<div class="chat-bubble">${html}</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatbot-input');
+  const query = input.value.trim();
+  if (!query) return;
+
+  // Show user message
+  addChatMessage(query, 'user');
+  input.value = '';
+
+  // Show typing indicator
+  const typingDiv = addChatBubbleHTML('<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>', 'bot');
+
+  try {
+    const fd = new FormData();
+    fd.append('query', query);
+    fd.append('enable_tts', 'false');
+
+    const res = await fetch(`${API}/api/chatbot/text-query`, {
+      method: 'POST',
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `Server error (${res.status})`);
+    }
+
+    const data = await res.json();
+
+    // Remove typing indicator
+    typingDiv.remove();
+
+    // Build response
+    let responseHTML = escHtml(data.answer_text || 'No response.');
+
+    // Add metadata badge
+    const langBadge = data.detected_language ? `<span class="chat-meta">${data.detected_language}</span>` : '';
+    const intentBadge = data.intent ? `<span class="chat-meta">${data.intent.replace('_', ' ')}</span>` : '';
+    responseHTML += `<div class="chat-meta-row">${langBadge}${intentBadge}</div>`;
+
+    addChatBubbleHTML(responseHTML, 'bot');
+
+  } catch (err) {
+    typingDiv.remove();
+    addChatBubbleHTML(`<span style="color: var(--red);">Error: ${escHtml(err.message)}</span>`, 'bot');
+  }
+}
+
+// Enter key handler for chatbot input
+document.addEventListener('DOMContentLoaded', () => {
+  const chatInput = document.getElementById('chatbot-input');
+  if (chatInput) {
+    chatInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') sendChatMessage();
+    });
+  }
+});

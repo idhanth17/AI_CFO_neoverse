@@ -38,6 +38,19 @@ class Settings(BaseSettings):
 
     # ── LLM AI Agent ──────────────────────────────
     GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
+    # ── Chatbot Pipeline ──────────────────────────
+    LLM_POLISH_ENABLED: bool = True
+    QUERY_CACHE_SIZE: int = 128
+    DEBUG: bool = True
+
+    # ── TTS (gTTS) ────────────────────────────────
+    TTS_OUTPUT_DIR: str = "./data/audio_output"
+
+    # ── Paths ─────────────────────────────────────
+    DATA_DIR: str = "./data"
+    MODELS_DIR: str = "./models"
     
     # ── Security ──────────────────────────────────
     # The API key required to access these backend routes from the frontend

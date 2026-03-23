@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.db.database import init_db
 from app.core.security import verify_api_key
 from app.api.routes import invoices, sales, inventory, analytics, speech
+from app.api.routes.chatbot import router as chatbot_router
 
 
 # ─────────────────────────────────────────────
@@ -123,6 +124,9 @@ app.include_router(sales.router, dependencies=[Depends(verify_api_key)])
 app.include_router(inventory.router, dependencies=[Depends(verify_api_key)])
 app.include_router(analytics.router, dependencies=[Depends(verify_api_key)])
 app.include_router(speech.router, dependencies=[Depends(verify_api_key)])
+
+# ── Chatbot (no API key required for easy frontend access) ────
+app.include_router(chatbot_router)
 
 
 # ─────────────────────────────────────────────
